@@ -1,0 +1,13 @@
+services:
+  nz-power-plans-api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: nz-power-plans-api
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=sqlite:///./data/nz_power_plans.db
