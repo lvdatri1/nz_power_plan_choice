@@ -14,36 +14,20 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 async function loadData() {
   const [retailers, plans] = await Promise.all([
-    api('/api/retailers').catch(() => []),
-    api('/api/plans').catch(() => []),
+    fetchJSON('/api/retailers').catch(() => []),
+    fetchJSON('/api/plans').catch(() => []),
   ]);
   allRetailers = retailers;
   allPlans = plans;
 }
 
-/* === Navigation === */
-function initNav() {
-  document.querySelectorAll('[data-tab]').forEach(a => {
-    a.addEventListener('click', e => {
-      e.preventDefault();
-      setTab(a.dataset.tab);
-    });
-  });
-}
-
-function setTab(name) {
-  document.querySelectorAll('[data-tab]').forEach(a => a.classList.toggle('active', a.dataset.tab === name));
-  document.querySelectorAll('.tab-content').forEach(s => s.classList.toggle('active', s.id === `tab-${name}`));
-  if (name === 'plans') renderPlans(allPlans);
-}
-
-async function api(path) {
+async function fetchJSON(path) {
   const res = await fetch(`${API}${path}`);
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
   return res.json();
 }
 
-async function apiWithTimeout(path, ms) {
+async function fetchJSONTimeout(path, ms) {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), ms);
   try {
@@ -55,7 +39,7 @@ async function apiWithTimeout(path, ms) {
   }
 }
 
-async function apiPost(path, body) {
+async function postJSON(path, body) {
   const res = await fetch(`${API}${path}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -65,26 +49,46 @@ async function apiPost(path, body) {
   return res.json();
 }
 
+/* === Navigation === */
+function initNav() {
+  document.querySelectorAll('[data-tab]').forEach(a => {
+    a.addEventListener('click', e => {
+      e.preventDefault();
+      const tab = a.dataset.tab;
+      document.querySelectorAll('[data-tab]').forEach(l => l.classList.remove('active'));
+      a.classList.add('active');
+      document.querySelectorAll('.tab-content').forEach(s => s.classList.remove('active'));
+      document.getElementById(`tab-${tab}`).classList.add('active');
+      if (tab === 'plans') renderPlans(allPlans);
+    });
+  });
+}
+
 /* === Dashboard === */
 async function initDashboard() {
-  const haStatus = await apiWithTimeout('/api/ha/status', 5000).catch(() => null);
-
-  const haEl = document.getElementById('ha-info');
+  const haStatus = await fetchJSONTimeout('/api/ha/status', 5000).catch(() => null);
+  const haAlert = document.getElementById('ha-alert');
+  const haInfo = document.getElementById('ha-info');
   const compareSection = document.getElementById('ha-compare-section');
+
   if (haStatus && haStatus.connected) {
-    haEl.innerHTML = `<span class="connected">Connected</span> — sensor: ${haStatus.sensor}`;
-    compareSection.style.display = 'block';
+    haAlert.className = 'alert alert-success';
+    haAlert.textContent = `Connected — sensor: ${haStatus.sensor}`;
+    haAlert.classList.remove('d-none');
+    haInfo.classList.add('d-none');
+    compareSection.classList.remove('d-none');
   } else if (haStatus && !haStatus.connected) {
-    haEl.innerHTML = '<span class="disconnected">Not connected</span> (add-on or sensor not configured)';
-    compareSection.style.display = 'none';
+    haAlert.className = 'alert alert-warning';
+    haAlert.textContent = 'Home Assistant not connected (sensor not found)';
+    haAlert.classList.remove('d-none');
+    haInfo.classList.add('d-none');
+    compareSection.classList.add('d-none');
   } else {
-    haEl.innerHTML = '<span class="disconnected">Not available</span> (not running as HA add-on)';
-    compareSection.style.display = 'none';
+    haInfo.textContent = 'Not available (not running as HA add-on)';
+    compareSection.classList.add('d-none');
   }
 
-  document.getElementById('ha-compare-btn').addEventListener('click', doHaCompare);
-
-  populateSelect('dash-plan', plans);
+  populateSelect('dash-plan', plans => plans);
   document.getElementById('dash-calc').addEventListener('click', doDashCalc);
 }
 
@@ -92,70 +96,39 @@ async function doDashCalc() {
   const planId = document.getElementById('dash-plan').value;
   const importKwh = parseFloat(document.getElementById('dash-import').value) || 0;
   const exportKwh = parseFloat(document.getElementById('dash-export').value) || 0;
-
-  const usage = [];
-  if (importKwh > 0) usage.push({ timestamp: new Date().toISOString(), kwh: importKwh });
-
+  const usage = importKwh > 0 ? [{ timestamp: new Date().toISOString(), kwh: importKwh }] : [];
   try {
-    const result = await apiPost('/api/cost/calculate', {
-      plan_id: parseInt(planId),
-      usage,
+    const result = await postJSON('/api/cost/calculate', {
+      plan_id: parseInt(planId), usage,
       include_export: exportKwh > 0,
       export_usage: exportKwh > 0 ? [{ timestamp: new Date().toISOString(), kwh: exportKwh }] : [],
     });
     document.getElementById('dash-result').innerHTML = renderBreakdown(result);
   } catch (err) {
-    document.getElementById('dash-result').innerHTML = `<p style="color:#dc2626">Error: ${err.message}</p>`;
+    document.getElementById('dash-result').innerHTML = `<div class="alert alert-danger py-2">${err.message}</div>`;
   }
 }
 
 async function doHaCompare() {
   const days = parseInt(document.getElementById('ha-compare-days').value) || 30;
-  const resultEl = document.getElementById('ha-compare-result');
-  resultEl.innerHTML = '<p>Comparing all plans…</p>';
-
+  const el = document.getElementById('ha-compare-result');
+  el.innerHTML = '<div class="spinner-border spinner-border-sm me-2" role="status"></div> Comparing all plans…';
   try {
-    const data = await api(`/api/ha/compare?days=${days}`);
+    const data = await fetchJSON(`/api/ha/compare?days=${days}`);
     if (!data.results || data.results.length === 0) {
-      resultEl.innerHTML = '<p style="color:var(--warning)">No plans to compare. Check sensor values.</p>';
+      el.innerHTML = '<div class="alert alert-warning py-2">No plans to compare. Check sensor values.</div>';
       return;
     }
-    const rows = data.results.map((r, i) => {
-      const isCheapest = i === 0;
-      return `<tr class="${isCheapest ? 'total' : ''}">
-        <td>${isCheapest ? '★ ' : ''}${r.retailer_name}</td>
-        <td>${r.plan_name}</td>
-        <td>${r.rate_type}</td>
-        <td>${r.has_export ? '✓' : '—'}</td>
-        <td>$${r.import_cost.toFixed(2)}</td>
-        <td>${r.export_credit > 0 ? '-$' + r.export_credit.toFixed(2) : '—'}</td>
-        <td>$${r.daily_charges.toFixed(2)}</td>
-        <td><strong>$${r.net_cost.toFixed(2)}</strong></td>
-        <td><strong>$${r.monthly_cost.toFixed(2)}</strong></td>
-      </tr>`;
-    }).join('');
-    resultEl.innerHTML = `
-      <p style="margin-bottom:8px;font-size:.9rem;color:var(--text-secondary)">
-        ${data.import_kwh.toFixed(2)} kWh import, ${data.export_kwh.toFixed(2)} kWh export over ${days} days
-        — <strong>${data.plans_compared}</strong> plans compared
-      </p>
-      <div style="overflow-x:auto">
-      <table class="breakdown-table">
-        <tr>
-          <th>Retailer</th><th>Plan</th><th>Type</th><th>Solar</th>
-          <th>Import</th><th>Export</th><th>Daily</th><th>Total</th><th>/month</th>
-        </tr>
-        ${rows}
-      </table>
-      </div>`;
+    el.innerHTML = `<p class="text-muted small mb-2">${data.import_kwh.toFixed(2)} kWh import, ${data.export_kwh.toFixed(2)} kWh export over ${days} days — <strong>${data.plans_compared}</strong> plans compared</p>${renderCompareTable(data.results)}`;
   } catch (err) {
-    resultEl.innerHTML = `<p style="color:#dc2626">Error: ${err.message}</p>`;
+    el.innerHTML = `<div class="alert alert-danger py-2">${err.message}</div>`;
   }
 }
 
 /* === Plans === */
 function initPlans() {
-  populateSelect('filter-retailer', allRetailers.map(r => ({ id: r.id, name: r.name })));
+  document.getElementById('filter-retailer').innerHTML = '<option value="">All Retailers</option>' +
+    allRetailers.map(r => `<option value="${r.id}">${esc(r.name)}</option>`).join('');
   document.getElementById('filter-retailer').addEventListener('change', applyFilters);
   document.getElementById('filter-rate').addEventListener('change', applyFilters);
 }
@@ -171,82 +144,105 @@ function applyFilters() {
 
 function renderPlans(plans) {
   const grid = document.getElementById('plans-grid');
+  if (!plans.length) {
+    grid.innerHTML = '<div class="text-muted">No plans found.</div>';
+    return;
+  }
   grid.innerHTML = plans.map(p => {
-    const retailerName = p.retailer?.name || p.retailer_name || '';
-    return `<div class="plan-card" onclick="showPlanDetail(${p.id})">
-      <h4>${p.name}</h4>
-      <div class="retailer">${retailerName}</div>
-      <div>
-        <span class="rate-badge">${p.rate_type}</span>
+    const name = p.retailer?.name || p.retailer_name || '';
+    return `<div class="col">
+      <div class="card plan-card shadow-sm h-100" onclick="showPlanDetail(${p.id})">
+        <div class="card-body">
+          <h6 class="card-title mb-1">${esc(p.name)}</h6>
+          <p class="card-text text-muted small mb-2">${esc(name)}</p>
+          <span class="badge bg-primary">${p.rate_type}</span>
+          ${p.daily_charge ? `<span class="text-muted small ms-2">$${p.daily_charge.toFixed(4)}/day</span>` : ''}
+        </div>
       </div>
-      ${p.daily_charge ? `<div class="daily-charge">Daily charge: $${p.daily_charge.toFixed(4)}</div>` : ''}
     </div>`;
   }).join('');
 }
 
 async function showPlanDetail(id) {
-  const plan = await api(`/api/plans/${id}`);
-  const overlay = document.createElement('div');
-  overlay.className = 'modal-overlay';
-  overlay.onclick = e => { if (e.target === overlay) overlay.remove(); };
+  const plan = await fetchJSON(`/api/plans/${id}`);
+  document.getElementById('modal-title').textContent = plan.name;
 
-  let ratesHtml = '';
+  let html = `<p class="text-muted">${esc(plan.retailer?.name || '')}</p>`;
+  html += `<p>Rate type: <strong>${plan.rate_type}</strong></p>`;
+  if (plan.daily_charge) html += `<p>Daily charge: <strong>$${plan.daily_charge.toFixed(4)}/day</strong></p>`;
+
+  const renderTable = (rows, cols) => {
+    if (!rows || !rows.length) return '';
+    return `<table class="table table-sm table-bordered mt-2">
+      <thead class="table-light"><tr>${cols.map(c => `<th>${c}</th>`).join('')}</tr></thead>
+      <tbody>${rows.join('')}</tbody>
+    </table>`;
+  };
+
   if (plan.rate_type === 'FLAT' && plan.flat_rates?.length) {
-    ratesHtml += `<div class="rate-section"><h4>Flat Rate</h4>
-      <table class="breakdown-table">
-        <tr><th>Description</th><th>Rate (c/kWh)</th></tr>
-        ${plan.flat_rates.map(r => `<tr><td>${r.description || 'Standard'}</td><td>${r.rate_cents_per_kwh.toFixed(4)}</td></tr>`).join('')}
-      </table></div>`;
+    html += `<h6 class="mt-3">Flat Rate</h6>`;
+    html += renderTable(
+      plan.flat_rates.map(r => `<tr><td>${esc(r.description || 'Standard')}</td><td>${r.rate_cents_per_kwh.toFixed(4)} c/kWh</td></tr>`),
+      ['Description', 'Rate'],
+    );
   }
   if (plan.rate_type === 'TIERED' && plan.tiered_rates?.length) {
-    ratesHtml += `<div class="rate-section"><h4>Tiered Rates</h4>
-      <table class="breakdown-table">
-        <tr><th>Tier</th><th>Rate (c/kWh)</th></tr>
-        ${plan.tiered_rates.map(r => `<tr><td>${r.tier_name || `Tier ${r.tier_order}`}${r.max_kwh ? ` (up to ${r.max_kwh} kWh)` : ' (unlimited)'}</td><td>${r.rate_cents_per_kwh.toFixed(4)}</td></tr>`).join('')}
-      </table></div>`;
+    html += `<h6 class="mt-3">Tiered Rates</h6>`;
+    html += renderTable(
+      plan.tiered_rates.map(r => `<tr><td>${esc(r.tier_name || `Tier ${r.tier_order}`)}</td><td>${r.max_kwh ? `up to ${r.max_kwh} kWh` : 'unlimited'}</td><td>${r.rate_cents_per_kwh.toFixed(4)} c/kWh</td></tr>`),
+      ['Tier', 'Threshold', 'Rate'],
+    );
   }
   if (plan.rate_type === 'TOU') {
     if (plan.tou_rates?.length) {
-      ratesHtml += `<div class="rate-section"><h4>TOU Import Rates</h4>
-        <table class="breakdown-table">
-          <tr><th>Period</th><th>Days</th><th>Time</th><th>Rate (c/kWh)</th></tr>
-          ${plan.tou_rates.map(r => `<tr><td>${r.period_name}</td><td>${r.day_of_week || 'all'}</td><td>${r.start_hour}:00-${r.end_hour}:00</td><td>${r.rate_cents_per_kwh.toFixed(4)}</td></tr>`).join('')}
-        </table></div>`;
+      html += `<h6 class="mt-3">TOU Import Rates</h6>`;
+      html += renderTable(
+        plan.tou_rates.map(r => `<tr><td>${esc(r.period_name)}</td><td>${r.day_of_week || 'all'}</td><td>${r.start_hour}:00-${r.end_hour}:00</td><td>${r.rate_cents_per_kwh.toFixed(4)} c/kWh</td></tr>`),
+        ['Period', 'Days', 'Time', 'Rate'],
+      );
     }
     if (plan.tou_export_rates?.length) {
-      ratesHtml += `<div class="rate-section"><h4>TOU Export Rates</h4>
-        <table class="breakdown-table">
-          <tr><th>Period</th><th>Days</th><th>Time</th><th>Rate (c/kWh)</th></tr>
-          ${plan.tou_export_rates.map(r => `<tr><td>${r.period_name}</td><td>${r.day_of_week || 'all'}</td><td>${r.start_hour}:00-${r.end_hour}:00</td><td>${r.rate_cents_per_kwh.toFixed(4)}</td></tr>`).join('')}
-        </table></div>`;
+      html += `<h6 class="mt-3">TOU Export Rates</h6>`;
+      html += renderTable(
+        plan.tou_export_rates.map(r => `<tr><td>${esc(r.period_name)}</td><td>${r.day_of_week || 'all'}</td><td>${r.start_hour}:00-${r.end_hour}:00</td><td>${r.rate_cents_per_kwh.toFixed(4)} c/kWh</td></tr>`),
+        ['Period', 'Days', 'Time', 'Rate'],
+      );
     }
   }
 
-  overlay.innerHTML = `<div class="modal">
-    <button class="close-btn" onclick="this.closest('.modal-overlay').remove()">✕</button>
-    <h2>${plan.name}</h2>
-    <p style="color:var(--text-secondary);margin-bottom:8px">${plan.retailer?.name || ''}</p>
-    <p>Rate type: <strong>${plan.rate_type}</strong></p>
-    ${plan.daily_charge ? `<p>Daily charge: <strong>$${plan.daily_charge.toFixed(4)}/day</strong></p>` : ''}
-    ${ratesHtml}
-  </div>`;
-  document.body.appendChild(overlay);
+  document.getElementById('modal-body').innerHTML = html;
+  const modal = new bootstrap.Modal(document.getElementById('plan-modal'));
+  modal.show();
 }
 
 /* === Calculator === */
 function initCalculator() {
-  populateSelect('calc-plan', allPlans);
-  document.getElementById('add-entry').addEventListener('click', () => {
-    const container = document.getElementById('calc-entries');
-    const row = document.createElement('div');
-    row.className = 'entry-row';
-    row.innerHTML = '<input type="number" class="entry-time" min="0" max="23" placeholder="Hour"><input type="number" class="entry-kwh" step="0.01" placeholder="kWh">';
-    container.appendChild(row);
-  });
+  const container = document.getElementById('calc-entries');
+  addCalcRow(container, 8, 2);
+  addCalcRow(container, 18, 5);
+  document.getElementById('add-entry').addEventListener('click', () => addCalcRow(container));
   document.getElementById('calc-export-check').addEventListener('change', e => {
-    document.getElementById('calc-export-entries').style.display = e.target.checked ? 'block' : 'none';
+    const el = document.getElementById('calc-export-entries');
+    el.classList.toggle('d-none', !e.target.checked);
+    if (e.target.checked) addExportRow(el);
   });
   document.getElementById('calc-btn').addEventListener('click', doCalc);
+  populateSelect('calc-plan', plans => plans);
+}
+
+function addCalcRow(container, hour, kwh) {
+  const row = document.createElement('div');
+  row.className = 'entry-row';
+  row.innerHTML = `<input type="number" class="form-control form-control-sm" min="0" max="23" placeholder="Hour" value="${hour != null ? hour : ''}"><input type="number" class="form-control form-control-sm" step="0.01" placeholder="kWh" value="${kwh != null ? kwh : ''}">`;
+  container.appendChild(row);
+}
+
+function addExportRow(container) {
+  container.innerHTML = '';
+  const row = document.createElement('div');
+  row.className = 'entry-row';
+  row.innerHTML = '<input type="number" class="form-control form-control-sm" min="0" max="23" placeholder="Hour"><input type="number" class="form-control form-control-sm" step="0.01" placeholder="kWh">';
+  container.appendChild(row);
 }
 
 async function doCalc() {
@@ -255,10 +251,10 @@ async function doCalc() {
 
   const usage = [];
   document.querySelectorAll('#calc-entries .entry-row').forEach(row => {
-    const hour = parseInt(row.querySelector('.entry-time').value);
-    const kwh = parseFloat(row.querySelector('.entry-kwh').value);
+    const hour = parseInt(row.children[0].value);
+    const kwh = parseFloat(row.children[1].value);
     if (!isNaN(kwh) && kwh > 0) {
-      const d = new Date(); d.setHours(hour, 0, 0, 0);
+      const d = new Date(); d.setHours(hour || 0, 0, 0, 0);
       usage.push({ timestamp: d.toISOString(), kwh });
     }
   });
@@ -266,28 +262,22 @@ async function doCalc() {
   let exportUsage = [];
   if (document.getElementById('calc-export-check').checked) {
     document.querySelectorAll('#calc-export-entries .entry-row').forEach(row => {
-      const hour = parseInt(row.querySelector('.export-time').value);
-      const kwh = parseFloat(row.querySelector('.export-kwh').value);
+      const hour = parseInt(row.children[0].value);
+      const kwh = parseFloat(row.children[1].value);
       if (!isNaN(kwh) && kwh > 0) {
-        const d = new Date(); d.setHours(hour, 0, 0);
+        const d = new Date(); d.setHours(hour || 0, 0, 0);
         exportUsage.push({ timestamp: d.toISOString(), kwh });
       }
     });
   }
 
   try {
-    const result = await apiPost('/api/cost/calculate', {
-      plan_id: parseInt(planId),
-      usage,
-      days,
-      include_export: exportUsage.length > 0,
-      export_usage: exportUsage,
-    });
-    document.getElementById('calc-result-card').style.display = 'block';
+    const result = await postJSON('/api/cost/calculate', { plan_id: parseInt(planId), usage, days, include_export: exportUsage.length > 0, export_usage: exportUsage });
+    document.getElementById('calc-result-card').classList.remove('d-none');
     document.getElementById('calc-result').innerHTML = renderBreakdown(result);
   } catch (err) {
-    document.getElementById('calc-result-card').style.display = 'block';
-    document.getElementById('calc-result').innerHTML = `<p style="color:#dc2626">Error: ${err.message}</p>`;
+    document.getElementById('calc-result-card').classList.remove('d-none');
+    document.getElementById('calc-result').innerHTML = `<div class="alert alert-danger py-2">${err.message}</div>`;
   }
 }
 
@@ -307,70 +297,95 @@ async function doCompare() {
   const sel = document.getElementById('compare-plans');
   const selected = Array.from(sel.selectedOptions).map(o => parseInt(o.value));
   if (selected.length < 2) {
-    document.getElementById('compare-results').innerHTML = '<p style="color:var(--warning)">Select at least 2 plans</p>';
+    document.getElementById('compare-results').innerHTML = '<div class="alert alert-warning py-2">Select at least 2 plans</div>';
     return;
   }
 
   const totalKwh = parseFloat(document.getElementById('compare-usage').value) || 300;
-  const results = document.getElementById('compare-results');
+  const resultsEl = document.getElementById('compare-results');
 
   try {
     const costs = await Promise.all(selected.map(async planId => {
-      const plan = await api(`/api/plans/${planId}`);
-      const result = await apiPost('/api/cost/calculate', {
-        plan_id: planId,
-        usage: [{ timestamp: new Date().toISOString(), kwh: totalKwh }],
-        days: 30,
-        include_export: false,
-        export_usage: [],
+      const plan = await fetchJSON(`/api/plans/${planId}`);
+      const result = await postJSON('/api/cost/calculate', {
+        plan_id: planId, usage: [{ timestamp: new Date().toISOString(), kwh: totalKwh }], days: 30, include_export: false, export_usage: [],
       });
       return { ...result, retailerName: plan.retailer?.name || '' };
     }));
 
     const minCost = Math.min(...costs.map(c => c.breakdown?.net_cost ?? Infinity));
-
-
-
-    results.innerHTML = `<p style="margin-bottom:12px">Monthly cost for <strong>${totalKwh} kWh</strong>:</p>
-      <div class="compare-grid">
-        ${costs.map(c => {
-          const net = c.breakdown?.net_cost ?? 0;
-          const isCheapest = net === minCost;
-          return `<div class="compare-card ${isCheapest ? 'cheapest' : ''}">
-            <h4>${c.plan_name}</h4>
-            <div class="retailer-name">${c.retailerName}</div>
-            <div class="cost-amount">$${net.toFixed(2)}</div>
-            <div class="cost-label">${isCheapest ? '★ Cheapest' : c.rate_type}</div>
-          </div>`;
-        }).join('')}
-      </div>`;
+    resultsEl.innerHTML = `<p class="text-muted mb-3">Monthly cost for <strong>${totalKwh} kWh</strong>:</p>
+      <div class="compare-grid">${costs.map(c => {
+        const net = c.breakdown?.net_cost ?? 0;
+        const isCheapest = net === minCost;
+        return `<div class="card ${isCheapest ? 'cheapest-card border-success' : 'shadow-sm'}">
+          <div class="card-body text-center">
+            <h6 class="card-title">${esc(c.plan_name)}</h6>
+            <p class="text-muted small">${esc(c.retailerName)}</p>
+            <p class="display-6 text-primary fw-bold mb-1">$${net.toFixed(2)}</p>
+            <p class="small ${isCheapest ? 'text-success fw-bold' : 'text-muted'}">${isCheapest ? '★ Cheapest' : c.rate_type}</p>
+          </div>
+        </div>`;
+      }).join('')}</div>`;
   } catch (err) {
-    results.innerHTML = `<p style="color:#dc2626">Error: ${err.message}</p>`;
+    resultsEl.innerHTML = `<div class="alert alert-danger py-2">${err.message}</div>`;
   }
 }
 
 /* === Helpers === */
-function populateSelect(id, items) {
+function populateSelect(id, getItems) {
   const sel = document.getElementById(id);
   if (!sel) return;
-  sel.innerHTML = items.map(i => `<option value="${i.id}">${i.name || i.retailer_name || i.plan_name || ''}</option>`).join('');
+  const items = typeof getItems === 'function' ? getItems(allPlans) : getItems;
+  sel.innerHTML = items.map(i => `<option value="${i.id}">${esc(i.name || i.retailer_name || i.plan_name || '')}</option>`).join('');
 }
 
 function renderBreakdown(result) {
   const b = result.breakdown;
-  if (!b) return '<p>No breakdown data</p>';
+  if (!b) return '<div class="alert alert-warning py-2">No breakdown data</div>';
   const net = b.net_cost ?? 0;
-  let itemsHtml = '';
+  let rows = '';
   if (b.items && b.items.length) {
-    itemsHtml = b.items.map(i => `<tr><td>${i.label}</td><td>${i.kwh.toFixed(2)} kWh × ${i.rate.toFixed(4)} c/kWh = <strong>$${i.cost.toFixed(2)}</strong></td></tr>`).join('');
+    rows = b.items.map(i => `<tr><td>${esc(i.label)}</td><td class="text-end">${i.kwh.toFixed(2)} kWh × ${i.rate.toFixed(4)} c/kWh</td><td class="text-end fw-medium">$${i.cost.toFixed(2)}</td></tr>`).join('');
   }
-  return `<table class="breakdown-table">
-    <tr><th>Item</th><th>Amount</th></tr>
-    ${itemsHtml}
-    <tr><td>Import cost</td><td>$${(b.import_cost ?? 0).toFixed(2)}</td></tr>
-    ${b.daily_charges != null && b.daily_charges > 0 ? `<tr><td>Daily charges</td><td>$${b.daily_charges.toFixed(2)}</td></tr>` : ''}
-    ${b.export_credit ? `<tr><td class="negative">Export credit</td><td class="negative">-$${Math.abs(b.export_credit).toFixed(2)}</td></tr>` : ''}
-    <tr class="total"><td>Net cost (${b.total_days || ''} day${b.total_days !== 1 ? 's' : ''})</td><td>$${net.toFixed(2)}</td></tr>
+  return `<table class="table table-sm table-bordered mt-2">
+    <thead class="table-light"><tr><th>Item</th><th class="text-end">Calculation</th><th class="text-end">Amount</th></tr></thead>
+    <tbody>
+      ${rows}
+      <tr><td>Import cost</td><td></td><td class="text-end">$${(b.import_cost ?? 0).toFixed(2)}</td></tr>
+      ${b.daily_charges != null && b.daily_charges > 0 ? `<tr><td>Daily charges</td><td></td><td class="text-end">$${b.daily_charges.toFixed(2)}</td></tr>` : ''}
+      ${b.export_credit ? `<tr><td class="text-success">Export credit</td><td></td><td class="text-end text-success">-$${Math.abs(b.export_credit).toFixed(2)}</td></tr>` : ''}
+      <tr class="table-active fw-bold"><td>Net cost (${b.total_days || ''} day${b.total_days !== 1 ? 's' : ''})</td><td></td><td class="text-end">$${net.toFixed(2)}</td></tr>
+    </tbody>
   </table>
-  <p style="font-size:.8rem;color:var(--text-secondary)">${result.retailer_name} — ${result.plan_name} (${result.rate_type})</p>`;
+  <p class="text-muted small mb-0">${esc(result.retailer_name)} — ${esc(result.plan_name)} (${result.rate_type})</p>`;
+}
+
+function renderCompareTable(results) {
+  const rows = results.map((r, i) => {
+    const isCheapest = i === 0;
+    return `<tr class="${isCheapest ? 'table-success' : ''}">
+      <td>${isCheapest ? '★ ' : ''}${esc(r.retailer_name)}</td>
+      <td>${esc(r.plan_name)}</td>
+      <td>${r.rate_type}</td>
+      <td>${r.has_export ? '✓' : '—'}</td>
+      <td class="text-end">$${r.import_cost.toFixed(2)}</td>
+      <td class="text-end">${r.export_credit > 0 ? '-$' + r.export_credit.toFixed(2) : '—'}</td>
+      <td class="text-end">$${r.daily_charges.toFixed(2)}</td>
+      <td class="text-end"><strong>$${r.net_cost.toFixed(2)}</strong></td>
+      <td class="text-end"><strong>$${r.monthly_cost.toFixed(2)}</strong></td>
+    </tr>`;
+  }).join('');
+  return `<div class="table-responsive"><table class="table table-sm table-hover">
+    <thead class="table-light">
+      <tr><th>Retailer</th><th>Plan</th><th>Type</th><th>Solar</th><th class="text-end">Import</th><th class="text-end">Export</th><th class="text-end">Daily</th><th class="text-end">Total</th><th class="text-end">/month</th></tr>
+    </thead>
+    <tbody>${rows}</tbody>
+  </table></div>`;
+}
+
+function esc(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
 }

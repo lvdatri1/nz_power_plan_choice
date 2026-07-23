@@ -4,54 +4,78 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>NZ Power Plans</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-  <nav>
-    <div class="nav-inner">
-      <span class="logo">⚡ NZ Power Plans</span>
-      <div class="nav-links">
-        <a href="#" data-tab="dashboard" class="active">Dashboard</a>
-        <a href="#" data-tab="plans">Plans</a>
-        <a href="#" data-tab="calculator">Calculator</a>
-        <a href="#" data-tab="compare">Compare</a>
+  <nav class="navbar navbar-expand-md navbar-dark bg-primary sticky-top shadow-sm">
+    <div class="container">
+      <span class="navbar-brand mb-0 h1">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" style="margin-right:8px">
+          <path d="M13.359 3.266c-.41-.516-1.058-.516-1.468 0L2.313 12.132c-.41.516-.042 1.172.516 1.172h2.895l-2.786 5.902c-.254.539.135 1.172.734 1.172h.012c.41 0 .781-.266.938-.684L8.75 13.5h1.25l-2.25 3.938 1.75.562 2.375-4.25h1.75l.75 3.25 1.75-.5-.75-2.75h1.25l4.5-8.25c.21-.39-.094-.75-.5-.75h-7.25l.938-1.5z"/>
+        </svg>
+        NZ Power Plans
+      </span>
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#nav">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+      <div class="collapse navbar-collapse" id="nav">
+        <ul class="navbar-nav ms-auto">
+          <li class="nav-item"><a class="nav-link active" href="#" data-tab="dashboard">Dashboard</a></li>
+          <li class="nav-item"><a class="nav-link" href="#" data-tab="plans">Plans</a></li>
+          <li class="nav-item"><a class="nav-link" href="#" data-tab="calculator">Calculator</a></li>
+          <li class="nav-item"><a class="nav-link" href="#" data-tab="compare">Compare</a></li>
+        </ul>
       </div>
     </div>
   </nav>
 
-  <main>
+  <main class="container py-4">
     <!-- Dashboard -->
     <section id="tab-dashboard" class="tab-content active">
-      <h1>Dashboard</h1>
-      <div id="ha-status"></div>
-      <div class="card-grid">
-        <div class="card">
-          <h3>Quick Cost</h3>
-          <div class="form-row">
-            <label for="dash-plan">Plan</label>
-            <select id="dash-plan"></select>
-          </div>
-          <div class="form-row">
-            <label for="dash-import">Import (kWh)</label>
-            <input type="number" id="dash-import" step="0.01" value="10">
-          </div>
-          <div class="form-row">
-            <label for="dash-export">Export (kWh)</label>
-            <input type="number" id="dash-export" step="0.01" value="0">
-          </div>
-          <button id="dash-calc">Calculate</button>
-          <div id="dash-result"></div>
-        </div>
-        <div class="card" id="ha-card">
-          <h3>Home Assistant</h3>
-          <div id="ha-info">Connecting…</div>
-          <div id="ha-compare-section" style="display:none;margin-top:12px">
-            <div class="form-row">
-              <label>Comparison period (days)</label>
-              <input type="number" id="ha-compare-days" value="30" min="1">
+      <h2 class="mb-4">Dashboard</h2>
+
+      <div id="ha-alert" class="alert d-none" role="alert"></div>
+
+      <div class="row g-4">
+        <div class="col-md-6">
+          <div class="card shadow-sm">
+            <div class="card-body">
+              <h5 class="card-title">Quick Cost</h5>
+              <div class="mb-3">
+                <label for="dash-plan" class="form-label">Plan</label>
+                <select id="dash-plan" class="form-select"></select>
+              </div>
+              <div class="row g-2 mb-3">
+                <div class="col-6">
+                  <label for="dash-import" class="form-label">Import (kWh)</label>
+                  <input type="number" id="dash-import" class="form-control" step="0.01" value="10">
+                </div>
+                <div class="col-6">
+                  <label for="dash-export" class="form-label">Export (kWh)</label>
+                  <input type="number" id="dash-export" class="form-control" step="0.01" value="0">
+                </div>
+              </div>
+              <button id="dash-calc" class="btn btn-primary w-100">Calculate</button>
+              <div id="dash-result" class="mt-3"></div>
             </div>
-            <button id="ha-compare-btn">Compare All Plans</button>
-            <div id="ha-compare-result" style="margin-top:12px"></div>
+          </div>
+        </div>
+        <div class="col-md-6">
+          <div class="card shadow-sm" id="ha-card">
+            <div class="card-body">
+              <h5 class="card-title">Home Assistant</h5>
+              <p id="ha-info" class="text-muted">Connecting…</p>
+              <div id="ha-compare-section" class="d-none">
+                <hr>
+                <div class="mb-3">
+                  <label for="ha-compare-days" class="form-label">Comparison period (days)</label>
+                  <input type="number" id="ha-compare-days" class="form-control" value="30" min="1">
+                </div>
+                <button id="ha-compare-btn" class="btn btn-outline-primary w-100">Compare All Plans</button>
+                <div id="ha-compare-result" class="mt-3"></div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -59,87 +83,104 @@
 
     <!-- Plans -->
     <section id="tab-plans" class="tab-content">
-      <h1>Plans</h1>
-      <div class="filters">
-        <select id="filter-retailer">
-          <option value="">All Retailers</option>
-        </select>
-        <select id="filter-rate">
-          <option value="">All Rate Types</option>
-          <option value="FLAT">Flat</option>
-          <option value="TOU">Time of Use</option>
-          <option value="TIERED">Tiered</option>
-        </select>
+      <h2 class="mb-4">Plans</h2>
+      <div class="row g-2 mb-4">
+        <div class="col-auto">
+          <select id="filter-retailer" class="form-select">
+            <option value="">All Retailers</option>
+          </select>
+        </div>
+        <div class="col-auto">
+          <select id="filter-rate" class="form-select">
+            <option value="">All Rate Types</option>
+            <option value="FLAT">Flat</option>
+            <option value="TOU">Time of Use</option>
+            <option value="TIERED">Tiered</option>
+          </select>
+        </div>
       </div>
-      <div id="plans-grid" class="card-grid"></div>
+      <div id="plans-grid" class="row row-cols-1 row-cols-sm-2 row-cols-lg-3 g-3"></div>
     </section>
 
     <!-- Calculator -->
     <section id="tab-calculator" class="tab-content">
-      <h1>Calculator</h1>
-      <div class="card-grid">
-        <div class="card">
-          <h3>Usage</h3>
-          <div class="form-row">
-            <label for="calc-plan">Plan</label>
-            <select id="calc-plan"></select>
-          </div>
-          <div class="form-row">
-            <label for="calc-daily">Days</label>
-            <input type="number" id="calc-daily" value="30" min="1">
-          </div>
-          <div id="calc-entries">
-            <div class="entry-row">
-              <input type="number" class="entry-time" value="8" min="0" max="23" placeholder="Hour">
-              <input type="number" class="entry-kwh" value="2" step="0.01" placeholder="kWh">
-            </div>
-            <div class="entry-row">
-              <input type="number" class="entry-time" value="18" min="0" max="23" placeholder="Hour">
-              <input type="number" class="entry-kwh" value="5" step="0.01" placeholder="kWh">
-            </div>
-          </div>
-          <button id="add-entry">+ Add Entry</button>
-          <label class="checkbox-label">
-            <input type="checkbox" id="calc-export-check"> Include solar export
-          </label>
-          <div id="calc-export-entries" style="display:none">
-            <div class="entry-row">
-              <input type="number" class="export-time" value="10" min="0" max="23" placeholder="Hour">
-              <input type="number" class="export-kwh" value="3" step="0.01" placeholder="kWh">
+      <h2 class="mb-4">Calculator</h2>
+      <div class="row g-4">
+        <div class="col-md-6">
+          <div class="card shadow-sm">
+            <div class="card-body">
+              <h5 class="card-title">Usage</h5>
+              <div class="mb-3">
+                <label for="calc-plan" class="form-label">Plan</label>
+                <select id="calc-plan" class="form-select"></select>
+              </div>
+              <div class="mb-3">
+                <label for="calc-daily" class="form-label">Days</label>
+                <input type="number" id="calc-daily" class="form-control" value="30" min="1">
+              </div>
+              <label class="form-label">Hourly entries</label>
+              <div id="calc-entries"></div>
+              <button id="add-entry" class="btn btn-outline-secondary btn-sm mb-3">+ Add Entry</button>
+              <div class="form-check mb-3">
+                <input class="form-check-input" type="checkbox" id="calc-export-check">
+                <label class="form-check-label" for="calc-export-check">Include solar export</label>
+              </div>
+              <div id="calc-export-entries" class="d-none mb-3"></div>
+              <button id="calc-btn" class="btn btn-primary w-100">Calculate</button>
             </div>
           </div>
-          <button id="calc-btn">Calculate</button>
         </div>
-        <div class="card" id="calc-result-card" style="display:none">
-          <h3>Result</h3>
-          <div id="calc-result"></div>
+        <div class="col-md-6">
+          <div id="calc-result-card" class="card shadow-sm d-none">
+            <div class="card-body">
+              <h5 class="card-title">Result</h5>
+              <div id="calc-result"></div>
+            </div>
+          </div>
         </div>
       </div>
     </section>
 
     <!-- Compare -->
     <section id="tab-compare" class="tab-content">
-      <h1>Compare Plans</h1>
-      <div class="card">
-        <div class="form-row">
-          <label>Select plans to compare</label>
-          <select id="compare-plans" multiple></select>
-          <small>Cmd/Ctrl+click to select multiple</small>
+      <h2 class="mb-4">Compare Plans</h2>
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <div class="mb-3">
+            <label for="compare-plans" class="form-label">Select plans to compare</label>
+            <select id="compare-plans" class="form-select" multiple></select>
+            <div class="form-text">Cmd/Ctrl+click to select multiple</div>
+          </div>
+          <div class="mb-3">
+            <label for="compare-usage" class="form-label">Monthly usage (kWh)</label>
+            <input type="number" id="compare-usage" class="form-control" value="300" min="1">
+          </div>
+          <button id="compare-btn" class="btn btn-primary w-100">Compare</button>
         </div>
-        <div class="form-row">
-          <label>Monthly usage (kWh)</label>
-          <input type="number" id="compare-usage" value="300" min="1">
-        </div>
-        <button id="compare-btn">Compare</button>
       </div>
-      <div id="compare-results"></div>
+      <div id="compare-results" class="mt-4"></div>
     </section>
   </main>
 
-  <footer>
-    <p>Data sourced from <a href="https://billy.govt.nz" target="_blank">billy.govt.nz</a> — Electricity Authority</p>
+  <footer class="text-center text-muted py-3 small border-top">
+    <div class="container">
+      Data sourced from <a href="https://billy.govt.nz" target="_blank" class="link-primary">billy.govt.nz</a> &mdash; Electricity Authority
+    </div>
   </footer>
 
+  <div id="plan-modal" class="modal fade" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="modal-title"></h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body" id="modal-body"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
   <script src="/static/app.js"></script>
 </body>
 </html>
