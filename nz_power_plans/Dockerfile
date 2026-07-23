@@ -6,7 +6,8 @@ RUN apk add --no-cache python3 py3-pip
 WORKDIR /app
 
 COPY backend/requirements.txt .
-RUN pip3 install --no-cache-dir -r requirements.txt
+RUN python3 -m venv /venv && \
+    /venv/bin/pip install --no-cache-dir -r requirements.txt
 
 COPY backend/app/ ./app/
 COPY run.sh /

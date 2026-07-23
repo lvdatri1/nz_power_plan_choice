@@ -20,5 +20,6 @@ if bashio::fs.file_exists "${CONFIG_PATH}"; then
     fi
 fi
 
+export PATH="/venv/bin:$PATH"
 cd /app
 exec python3 -m uvicorn app.main:app --host 0.0.0.0 --port 8080 --log-level info
