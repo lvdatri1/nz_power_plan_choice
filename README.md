@@ -7,6 +7,15 @@ NZ electricity plan comparison and cost analysis. Runs as a **Home Assistant add
 - Solar export credit with time-of-use export rates
 - No external dependencies — everything runs locally
 
+## Web UI
+
+Open `http://localhost:8080` (standalone) or **Open Web UI** in the HA add-on page.
+
+- **Dashboard** — quick cost estimate + HA connection status
+- **Plans** — browse all 26 plans, filter by retailer/rate type, click for rate details
+- **Calculator** — enter hourly usage, add solar export, see cost breakdown
+- **Compare** — compare monthly costs across plans, cheapest highlighted
+
 ## Installation
 
 ### As HA Add-on
@@ -17,7 +26,7 @@ NZ electricity plan comparison and cost analysis. Runs as a **Home Assistant add
 4. Find **NZ Power Plans** in the store and install
 5. Go to **Configuration** and set your plan ID and sensor entity IDs
 6. Start the add-on
-7. Access via **Settings → Add-ons → NZ Power Plans → Open Web UI** (Swagger API docs)
+7. Open **Web UI** from the add-on page — use the dashboard to browse plans, calculate costs, and compare rates
 
 ### Standalone Docker
 
