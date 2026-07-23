@@ -1,31 +1,32 @@
 # NZ Power Plans
 
-Compare your home energy usage against real New Zealand electricity retailer plans — directly in Home Assistant. No external servers needed.
+NZ electricity plan comparison and cost analysis. Runs as a **Home Assistant add-on** or a **standalone API server**.
 
-## Architecture
+- 14 NZ retailers, 26 plans built-in (Contact, Meridian, Genesis, Electric Kiwi, etc.)
+- TOU (Time of Use), Flat, and Tiered rate structures
+- Solar export credit with time-of-use export rates
+- No external dependencies — everything runs locally
 
+## Installation
+
+### As HA Add-on
+
+1. Go to **Settings → Add-ons → Add-on Store**
+2. Click **⋮ → Repositories**
+3. Add `https://github.com/lvdatri1/nz_power_plan_choice`
+4. Find **NZ Power Plans** in the store and install
+5. Go to **Configuration** and set your plan ID and sensor entity IDs
+6. Start the add-on
+7. Access via **Settings → Add-ons → NZ Power Plans → Open Web UI** (Swagger API docs)
+
+### Standalone Docker
+
+```bash
+docker compose up -d
+# API at http://localhost:8080
 ```
-┌────────────────────────────────────────┐
-│  Home Assistant (HACS Integration)     │
-│                                        │
-│  ┌──────────────┐  ┌────────────────┐  │
-│  │ sensor.py    │  │ cost_engine.py  │  │
-│  │ 6 sensors    │◀─│ FLAT / TOU calc │  │
-│  └──────────────┘  └──────┬─────────┘  │
-│                           │             │
-│  ┌────────────────────────┘             │
-│  │                                      │
-│  ┌▼─────────────────────────────────┐   │
-│  │ data.py (26 NZ plans embedded)   │   │
-│  └──────────────────────────────────┘   │
-└────────────────────────────────────────┘
-```
 
-## Backend (Optional)
-
-For advanced usage, there's also a FastAPI backend in the `backend/` directory that provides the same calculations via REST API. You don't need it for the HA integration — all logic runs inside Home Assistant.
-
-### Quick Start
+### Manual
 
 ```bash
 cd backend
@@ -33,94 +34,62 @@ pip install -r requirements.txt
 uvicorn app.main:app --host 0.0.0.0 --port 8080
 ```
 
-### Docker
+## API
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/health` | Health check |
+| GET | `/api/retailers` | List all retailers |
+| GET | `/api/plans` | List plans (filter: `retailer_id`, `rate_type`) |
+| GET | `/api/plans/{id}` | Get plan details with rates |
+| POST | `/api/cost/calculate` | Calculate cost for usage against a plan |
+| GET | `/api/ha/status` | (Add-on) Check HA connection |
+| GET | `/api/ha/cost` | (Add-on) Read HA sensors + calculate cost |
+
+### Cost Calculation
 
 ```bash
-docker compose up -d
+curl -X POST http://localhost:8080/api/cost/calculate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "plan_id": 7,
+    "usage": [{"timestamp": "2026-07-22T08:00:00", "kwh": 1.5}],
+    "include_export": true,
+    "export_usage": [{"timestamp": "2026-07-22T10:00:00", "kwh": 2.5}]
+  }'
 ```
 
-The backend auto-seeds 14 NZ retailers and 26 electricity plans on first run.
+## REST Sensor Setup (optional)
 
-## Home Assistant Integration
+Add to `configuration.yaml` to pull data into HA:
 
-### HACS Installation
-
-1. Go to **HACS → Custom repositories**
-2. Add `https://github.com/lvdatri1/nz_power_plan_choice` as an **Integration**
-3. Click **Install**
-4. Restart Home Assistant
-
-### Manual Installation
-
-Copy the `custom_components/nz_power_plans/` folder to your HA `config/custom_components/` directory:
-
-```bash
-cp -r custom_components/nz_power_plans/ /path/to/your/ha/config/custom_components/
+```yaml
+sensor:
+  - platform: rest
+    name: "NZ Power Cost"
+    resource: "http://a0d7b954-nz-power-plans:8080/api/ha/cost"
+    value_template: "{{ value_json.breakdown.net_cost }}"
+    unit_of_measurement: "NZD"
+    scan_interval: 300
+    json_attributes:
+      - import_kwh
+      - export_kwh
+      - breakdown
 ```
 
-Restart Home Assistant.
+Replace `a0d7b954-nz-power-plans` with your add-on's slug-based hostname (visible in add-on network info).
 
-### Configuration
+## Rate Structures
 
-1. Go to **Settings → Devices & Services → Add Integration**
-2. Search for **NZ Power Plans**
-3. Select your **retailer** from the dropdown
-4. Select your **plan** from the dropdown
-5. Map your HA energy sensors:
-   - Import sensor (e.g., `sensor.energy_import_hourly`)
-   - Export sensor (e.g., `sensor.energy_export_hourly`)
-
-### Sensors Created
-
-| Sensor | Description |
-|--------|-------------|
-| `sensor.nz_power_current_rate` | Current effective rate ($/kWh) |
-| `sensor.nz_power_daily_cost` | Estimated daily cost |
-| `sensor.nz_power_monthly_cost` | Estimated monthly cost |
-| `sensor.nz_power_daily_import` | Daily import kWh |
-| `sensor.nz_power_daily_export` | Daily export kWh |
-| `sensor.nz_power_plan_info` | Active plan details |
+| Type | Description |
+|------|-------------|
+| **FLAT** | Single rate per kWh |
+| **TIERED** | Progressive rates by usage band |
+| **TOU** | Peak/off-peak/free power windows with day-of-week matching |
 
 ## Data Sources
 
-The seed data includes plans from all 14 retailers on the NZ Electricity Authority's [billy.govt.nz](https://billy.govt.nz) comparison site:
-
-- Contact Energy, Meridian Energy, Genesis Energy, Mercury NZ
-- Electric Kiwi, 2degrees, Octopus Energy, Powershop
-- Ecotricity, Pulse Energy, Nova Energy, Toast Electric
-- Adonis Energy, Mystic Winds
-
-Plans include FLAT and TOU (Time of Use) rate structures with peak/off-peak/free power windows and solar export rates.
-
-## Rate Structures Supported
-
-| Type | Description | Example |
-|------|-------------|---------|
-| **FLAT** | Single rate per kWh | 29c/kWh |
-| **TIERED** | Progressive rates by usage band | First 100kWh @ 25c, next 200kWh @ 30c |
-| **TOU** | Rates vary by time of day | Peak 35c, Off-peak 15c, Free 9pm-12am |
-
-## Planned Features
-
-- [ ] billy.govt.nz automated scraper (Playwright-based)
-- [ ] EIEP14A standardized data format support (mandatory Oct 2026)
-- [ ] Multi-plan comparison sensors
-- [ ] Energy dashboard integration
-- [ ] Forecast and anomaly detection
-
-## Development
-
-```bash
-# Install dev dependencies
-cd backend
-pip install -r requirements-dev.txt
-
-# Run tests
-python3 -m pytest tests/ -v
-
-# Run scraper
-python3 -c "import asyncio; from app.billy_scraper import export_to_json; asyncio.run(export_to_json())"
-```
+Plans from all 14 retailers on [billy.govt.nz](https://billy.govt.nz): Contact Energy, Meridian Energy, Genesis Energy, Mercury NZ, Electric Kiwi, 2degrees, Octopus Energy, Powershop, Ecotricity, Pulse Energy, Nova Energy, Toast Electric, Adonis Energy, Mystic Winds.
 
 ## License
 

@@ -1,0 +1,48 @@
+name: "NZ Power Plans"
+version: "1.0.0"
+slug: nz_power_plans
+description: "NZ electricity plan comparison — cost analysis with TOU, flat, and solar export rates. 14 retailers, 26 plans built-in."
+arch:
+  - armhf
+  - armv7
+  - aarch64
+  - amd64
+  - i386
+startup: application
+boot: auto
+host_network: false
+ports:
+  8080/tcp: 8080
+ports_description:
+  8080/tcp: "API"
+panel_icon: "mdi:flash-outline"
+panel_title: "NZ Power Plans"
+homeassistant_api: true
+auth_api: false
+ingress: true
+ingress_port: 8080
+map:
+  - config:rw
+  - data:rw
+options:
+  plan_id: 1
+  import_sensor: sensor.energy_import_hourly
+  export_sensor: sensor.energy_export_hourly
+schema:
+  plan_id:
+    name: "Default Plan ID"
+    description: "Which plan to use for calculations (1-26)"
+    required: true
+    default: 1
+    type: int
+  import_sensor:
+    name: "Import Sensor"
+    description: "HA sensor for grid consumption (kWh)"
+    required: true
+    default: sensor.energy_import_hourly
+    type: string
+  export_sensor:
+    name: "Export Sensor"
+    description: "HA sensor for solar export (kWh), leave empty if none"
+    required: false
+    type: string

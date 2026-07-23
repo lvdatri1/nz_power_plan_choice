@@ -1,3 +1,5 @@
+import httpx
+from datetime import datetime
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
@@ -124,3 +126,71 @@ def calculate_plan_cost(req: CostRequest, db: Session = Depends(get_db)):
         rate_type=plan.rate_type.value,
         breakdown=breakdown,
     )
+
+
+@app.get("/api/ha/status")
+async def ha_status():
+    if not settings.ha_url or not settings.ha_token:
+        return {"connected": False, "message": "HA not configured (not running as add-on)"}
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(
+                f"{settings.ha_url}/api/states/{settings.nz_import_sensor}",
+                headers={"Authorization": f"Bearer {settings.ha_token}"},
+                timeout=10,
+            )
+            return {"connected": r.status_code == 200, "sensor": settings.nz_import_sensor, "status": r.status_code}
+    except Exception as e:
+        return {"connected": False, "error": str(e)}
+
+
+@app.get("/api/ha/cost")
+async def ha_cost(db: Session = Depends(get_db)):
+    if not settings.ha_url or not settings.ha_token:
+        raise HTTPException(status_code=400, detail="HA not configured")
+    plan = db.query(Plan).filter(Plan.id == settings.nz_plan_id).first()
+    if not plan:
+        raise HTTPException(status_code=404, detail=f"Plan {settings.nz_plan_id} not found")
+
+    async with httpx.AsyncClient() as client:
+        headers = {"Authorization": f"Bearer {settings.ha_token}"}
+
+        import_state = await client.get(
+            f"{settings.ha_url}/api/states/{settings.nz_import_sensor}",
+            headers=headers, timeout=10,
+        )
+        import_kwh = 0.0
+        if import_state.status_code == 200:
+            try:
+                import_kwh = float(import_state.json()["state"])
+            except (ValueError, KeyError):
+                pass
+
+        export_kwh = 0.0
+        if settings.nz_export_sensor:
+            export_state = await client.get(
+                f"{settings.ha_url}/api/states/{settings.nz_export_sensor}",
+                headers=headers, timeout=10,
+            )
+            if export_state.status_code == 200:
+                try:
+                    export_kwh = float(export_state.json()["state"])
+                except (ValueError, KeyError):
+                    pass
+
+    req = CostRequest(
+        plan_id=plan.id,
+        usage=[{"timestamp": datetime.utcnow().isoformat(), "kwh": import_kwh}],
+        include_export=bool(export_kwh),
+        export_usage=[{"timestamp": datetime.utcnow().isoformat(), "kwh": export_kwh}] if export_kwh else [],
+    )
+    breakdown = calculate_cost(plan, req)
+    return {
+        "plan_id": plan.id,
+        "plan_name": plan.name,
+        "retailer_name": plan.retailer.name,
+        "rate_type": plan.rate_type.value,
+        "import_kwh": import_kwh,
+        "export_kwh": export_kwh,
+        "breakdown": breakdown.model_dump() if hasattr(breakdown, "model_dump") else breakdown,
+    }

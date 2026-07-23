@@ -1,6 +1,0 @@
-recalculate:
-  name: Recalculate
-  description: Trigger cost recalculation immediately
-reload_plans:
-  name: Reload Plans
-  description: Reload plan data (not yet implemented)

@@ -8,5 +8,11 @@ class Settings(BaseSettings):
     cors_origins: str = "*"
     debug: bool = True
 
+    nz_plan_id: int = 1
+    nz_import_sensor: str = "sensor.energy_import_hourly"
+    nz_export_sensor: str = "sensor.energy_export_hourly"
+    ha_url: str = ""
+    ha_token: str = ""
+
 
 settings = Settings()
