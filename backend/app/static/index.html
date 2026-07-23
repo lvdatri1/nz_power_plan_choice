@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NZ Power Plans</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <nav>
+    <div class="nav-inner">
+      <span class="logo">⚡ NZ Power Plans</span>
+      <div class="nav-links">
+        <a href="#" data-tab="dashboard" class="active">Dashboard</a>
+        <a href="#" data-tab="plans">Plans</a>
+        <a href="#" data-tab="calculator">Calculator</a>
+        <a href="#" data-tab="compare">Compare</a>
+      </div>
+    </div>
+  </nav>
+
+  <main>
+    <!-- Dashboard -->
+    <section id="tab-dashboard" class="tab-content active">
+      <h1>Dashboard</h1>
+      <div id="ha-status"></div>
+      <div class="card-grid">
+        <div class="card">
+          <h3>Quick Cost</h3>
+          <div class="form-row">
+            <label for="dash-plan">Plan</label>
+            <select id="dash-plan"></select>
+          </div>
+          <div class="form-row">
+            <label for="dash-import">Import (kWh)</label>
+            <input type="number" id="dash-import" step="0.01" value="10">
+          </div>
+          <div class="form-row">
+            <label for="dash-export">Export (kWh)</label>
+            <input type="number" id="dash-export" step="0.01" value="0">
+          </div>
+          <button id="dash-calc">Calculate</button>
+          <div id="dash-result"></div>
+        </div>
+        <div class="card" id="ha-card">
+          <h3>Home Assistant</h3>
+          <div id="ha-info">Connecting…</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Plans -->
+    <section id="tab-plans" class="tab-content">
+      <h1>Plans</h1>
+      <div class="filters">
+        <select id="filter-retailer">
+          <option value="">All Retailers</option>
+        </select>
+        <select id="filter-rate">
+          <option value="">All Rate Types</option>
+          <option value="FLAT">Flat</option>
+          <option value="TOU">Time of Use</option>
+          <option value="TIERED">Tiered</option>
+        </select>
+      </div>
+      <div id="plans-grid" class="card-grid"></div>
+    </section>
+
+    <!-- Calculator -->
+    <section id="tab-calculator" class="tab-content">
+      <h1>Calculator</h1>
+      <div class="card-grid">
+        <div class="card">
+          <h3>Usage</h3>
+          <div class="form-row">
+            <label for="calc-plan">Plan</label>
+            <select id="calc-plan"></select>
+          </div>
+          <div class="form-row">
+            <label for="calc-daily">Days</label>
+            <input type="number" id="calc-daily" value="30" min="1">
+          </div>
+          <div id="calc-entries">
+            <div class="entry-row">
+              <input type="number" class="entry-time" value="8" min="0" max="23" placeholder="Hour">
+              <input type="number" class="entry-kwh" value="2" step="0.01" placeholder="kWh">
+            </div>
+            <div class="entry-row">
+              <input type="number" class="entry-time" value="18" min="0" max="23" placeholder="Hour">
+              <input type="number" class="entry-kwh" value="5" step="0.01" placeholder="kWh">
+            </div>
+          </div>
+          <button id="add-entry">+ Add Entry</button>
+          <label class="checkbox-label">
+            <input type="checkbox" id="calc-export-check"> Include solar export
+          </label>
+          <div id="calc-export-entries" style="display:none">
+            <div class="entry-row">
+              <input type="number" class="export-time" value="10" min="0" max="23" placeholder="Hour">
+              <input type="number" class="export-kwh" value="3" step="0.01" placeholder="kWh">
+            </div>
+          </div>
+          <button id="calc-btn">Calculate</button>
+        </div>
+        <div class="card" id="calc-result-card" style="display:none">
+          <h3>Result</h3>
+          <div id="calc-result"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Compare -->
+    <section id="tab-compare" class="tab-content">
+      <h1>Compare Plans</h1>
+      <div class="card">
+        <div class="form-row">
+          <label>Select plans to compare</label>
+          <select id="compare-plans" multiple></select>
+          <small>Cmd/Ctrl+click to select multiple</small>
+        </div>
+        <div class="form-row">
+          <label>Monthly usage (kWh)</label>
+          <input type="number" id="compare-usage" value="300" min="1">
+        </div>
+        <button id="compare-btn">Compare</button>
+      </div>
+      <div id="compare-results"></div>
+    </section>
+  </main>
+
+  <footer>
+    <p>Data sourced from <a href="https://billy.govt.nz" target="_blank">billy.govt.nz</a> — Electricity Authority</p>
+  </footer>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

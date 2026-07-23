@@ -1,7 +1,10 @@
+import os
 import httpx
 from datetime import datetime
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -194,3 +197,12 @@ async def ha_cost(db: Session = Depends(get_db)):
         "export_kwh": export_kwh,
         "breakdown": breakdown.model_dump() if hasattr(breakdown, "model_dump") else breakdown,
     }
+
+
+static_dir = os.path.join(os.path.dirname(__file__), "static")
+app.mount("/static", StaticFiles(directory=static_dir), name="static")
+
+
+@app.get("/")
+def serve_index():
+    return FileResponse(os.path.join(static_dir, "index.html"))
