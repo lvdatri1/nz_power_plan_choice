@@ -33,6 +33,18 @@ async function api(path) {
   return res.json();
 }
 
+async function apiWithTimeout(path, ms) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), ms);
+  try {
+    const res = await fetch(`${API}${path}`, { signal: ctrl.signal });
+    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+    return res.json();
+  } finally {
+    clearTimeout(t);
+  }
+}
+
 async function apiPost(path, body) {
   const res = await fetch(`${API}${path}`, {
     method: 'POST',
@@ -48,7 +60,7 @@ async function initDashboard() {
   const [retailers, plans, haStatus] = await Promise.all([
     api('/api/retailers').catch(() => []),
     api('/api/plans').catch(() => []),
-    api('/api/ha/status').catch(() => null),
+    apiWithTimeout('/api/ha/status', 5000).catch(() => null),
   ]);
   allRetailers = retailers;
   allPlans = plans;
