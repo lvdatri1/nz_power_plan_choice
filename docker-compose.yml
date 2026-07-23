@@ -1,7 +1,7 @@
 services:
   nz-power-plans-api:
     build:
-      context: ./backend
+      context: ./nz_power_plans/backend
       dockerfile: Dockerfile
     container_name: nz-power-plans-api
     ports:

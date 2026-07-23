@@ -1,0 +1,14 @@
+{
+  "name": "NZ Power Plans",
+  "url": "https://github.com/lvdatri1/nz_power_plan_choice",
+  "maintainer": "lvdatri1",
+  "addons": [
+    {
+      "name": "NZ Power Plans",
+      "slug": "nz_power_plans",
+      "description": "NZ electricity plan comparison — cost analysis with TOU, flat, and solar export rates. Reads HA sensors and compares against all current plans from billy.govt.nz.",
+      "version": "1.0.0",
+      "url": "https://github.com/lvdatri1/nz_power_plan_choice/tree/main/addon"
+    }
+  ]
+}

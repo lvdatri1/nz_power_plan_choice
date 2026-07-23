@@ -9,7 +9,7 @@ COPY backend/requirements.txt .
 RUN pip3 install --no-cache-dir -r requirements.txt
 
 COPY backend/app/ ./app/
-COPY addon/run.sh /
+COPY run.sh /
 
 RUN chmod a+x /run.sh
 
