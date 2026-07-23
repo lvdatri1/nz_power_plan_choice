@@ -67,7 +67,7 @@ curl -X POST http://localhost:8080/api/cost/calculate \
 ### HACS Installation
 
 1. Go to **HACS → Custom repositories**
-2. Add `https://github.com/trinhle/nz_power_plans` as an **Integration**
+2. Add `https://github.com/lvdatri1/nz_power_plan_choice` as an **Integration**
 3. Click **Install**
 4. Restart Home Assistant
 

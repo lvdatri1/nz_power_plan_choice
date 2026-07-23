@@ -1,10 +1,10 @@
 {
   "domain": "nz_power_plans",
   "name": "NZ Power Plans",
-  "codeowners": ["@trinhle"],
+  "codeowners": ["@lvdatri1"],
   "config_flow": true,
   "dependencies": [],
-  "documentation": "https://github.com/trinhle/nz_power_plans",
+  "documentation": "https://github.com/lvdatri1/nz_power_plan_choice",
   "integration_type": "hub",
   "iot_class": "local_polling",
   "requirements": [],
