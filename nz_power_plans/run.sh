@@ -1,5 +1,4 @@
-#!/usr/bin/env bashio
-# shellcheck shell=bash
+#!/usr/bin/env bash
 
 set -e
 set +u
@@ -16,12 +15,26 @@ if [ -f "${CONFIG_PATH}" ]; then
     [ -n "${IMPORT_SENSOR}" ] && export NZ_IMPORT_SENSOR="${IMPORT_SENSOR}" && echo "[startup] NZ_IMPORT_SENSOR=${IMPORT_SENSOR}"
     [ -n "${EXPORT_SENSOR}" ] && export NZ_EXPORT_SENSOR="${EXPORT_SENSOR}" && echo "[startup] NZ_EXPORT_SENSOR=${EXPORT_SENSOR}"
 
-    if [ -n "${SUPERVISOR_TOKEN}" ]; then
+    TOKEN="${SUPERVISOR_TOKEN}"
+    if [ -z "${TOKEN}" ] && [ -n "${HASSIO_TOKEN}" ]; then
+        TOKEN="${HASSIO_TOKEN}"
+        echo "[startup] Using HASSIO_TOKEN"
+    fi
+    if [ -z "${TOKEN}" ] && [ -f /var/run/supervisor/token ]; then
+        TOKEN=$(cat /var/run/supervisor/token)
+        echo "[startup] Read token from /var/run/supervisor/token"
+    fi
+    if [ -z "${TOKEN}" ] && [ -f /run/s6/container_environment/SUPERVISOR_TOKEN ]; then
+        TOKEN=$(cat /run/s6/container_environment/SUPERVISOR_TOKEN)
+        echo "[startup] Read token from s6 env"
+    fi
+
+    if [ -n "${TOKEN}" ]; then
         export HA_URL="http://supervisor/core"
-        export HA_TOKEN="${SUPERVISOR_TOKEN}"
+        export HA_TOKEN="${TOKEN}"
         echo "[startup] HA configured via supervisor token"
     else
-        echo "[startup] WARNING: SUPERVISOR_TOKEN not set"
+        echo "[startup] WARNING: no supervisor token found"
     fi
 else
     echo "[startup] WARNING: ${CONFIG_PATH} not found, using defaults"
