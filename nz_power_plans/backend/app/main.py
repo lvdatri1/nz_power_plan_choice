@@ -22,10 +22,14 @@ from app import billy_scraper
 async def lifespan(app: FastAPI):
     init_db()
     seed_data.seed_if_empty()
-    try:
-        await billy_scraper.refresh_plans()
-    except Exception:
-        pass
+
+    async def background_refresh():
+        try:
+            await billy_scraper.refresh_plans()
+        except Exception:
+            pass
+
+    asyncio.create_task(background_refresh())
     yield
 
 
