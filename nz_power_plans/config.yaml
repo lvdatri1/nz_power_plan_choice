@@ -22,6 +22,6 @@ options:
   import_sensor: sensor.energy_import_hourly
   export_sensor: sensor.energy_export_hourly
 schema:
-  plan_id: int(1)
+  plan_id: int
   import_sensor: str
   export_sensor: str?
