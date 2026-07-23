@@ -3,11 +3,8 @@ version: "1.0.0"
 slug: nz_power_plans
 description: "NZ electricity plan comparison and cost analysis. Compares HA energy sensors against all current plans from billy.govt.nz including solar export."
 arch:
-  - armhf
-  - armv7
   - aarch64
   - amd64
-  - i386
 startup: application
 boot: auto
 homeassistant_api: true
