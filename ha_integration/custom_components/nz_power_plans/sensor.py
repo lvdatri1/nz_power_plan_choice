@@ -4,8 +4,6 @@ import logging
 from datetime import timedelta, datetime
 from typing import Any
 
-import httpx
-
 from homeassistant.components.sensor import SensorEntity, SensorStateClass, SensorDeviceClass
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import UnitOfEnergy, CURRENCY_DOLLAR
@@ -13,80 +11,57 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .const import (
-    DOMAIN,
-    CONF_BACKEND_URL,
-    CONF_PLAN_ID,
-    CONF_IMPORT_SENSOR,
-    CONF_EXPORT_SENSOR,
-    SCAN_INTERVAL_SECONDS,
-    SENSOR_PREFIX,
-)
+from .const import DOMAIN, CONF_PLAN_ID, CONF_IMPORT_SENSOR, CONF_EXPORT_SENSOR, SCAN_INTERVAL_SECONDS, SENSOR_PREFIX
+from .data import get_plan_by_id
+from .cost_engine import calculate_cost, minutes_from_midnight, day_of_week_group
 
 _LOGGER = logging.getLogger(__name__)
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
     config = entry.data
-    backend_url = config[CONF_BACKEND_URL]
     plan_id = config[CONF_PLAN_ID]
-    import_sensor_id = config.get(CONF_IMPORT_SENSOR, "sensor.energy_import")
-    export_sensor_id = config.get(CONF_EXPORT_SENSOR, "sensor.energy_export")
+    import_sensor_id = config.get(CONF_IMPORT_SENSOR, "sensor.energy_import_hourly")
+    export_sensor_id = config.get(CONF_EXPORT_SENSOR, "sensor.energy_export_hourly")
 
-    plan_info = await fetch_plan(backend_url, plan_id)
-    if plan_info is None:
-        _LOGGER.error("Cannot fetch plan %d from %s", plan_id, backend_url)
+    plan = get_plan_by_id(plan_id)
+    if plan is None:
+        _LOGGER.error("Plan %d not found in embedded data", plan_id)
         return
 
-    coordinator = NZPowerCoordinator(hass, backend_url, plan_id, plan_info, import_sensor_id, export_sensor_id)
+    coordinator = NZPowerCoordinator(hass, plan, import_sensor_id, export_sensor_id)
     await coordinator.async_refresh()
 
     async_add_entities([
-        NZRateSensor(coordinator),
-        NZDailyCostSensor(coordinator),
-        NZMonthlyCostSensor(coordinator),
-        NZDailyImportSensor(coordinator),
-        NZDailyExportSensor(coordinator),
-        NZPlanInfoSensor(coordinator),
+        NZRateSensor(coordinator, plan_id),
+        NZDailyCostSensor(coordinator, plan_id),
+        NZMonthlyCostSensor(coordinator, plan_id),
+        NZDailyImportSensor(coordinator, plan_id),
+        NZDailyExportSensor(coordinator, plan_id),
+        NZPlanInfoSensor(coordinator, plan_id),
     ])
 
 
-async def fetch_plan(url: str, plan_id: int) -> dict | None:
-    try:
-        async with httpx.AsyncClient() as client:
-            r = await client.get(f"{url}/api/plans/{plan_id}", timeout=10)
-            if r.status_code == 200:
-                return r.json()
-    except Exception as e:
-        _LOGGER.warning("fetch_plan error: %s", e)
-    return None
-
-
 class NZPowerCoordinator(DataUpdateCoordinator):
-    def __init__(self, hass: HomeAssistant, backend_url: str, plan_id: int,
-                 plan_info: dict, import_sensor_id: str, export_sensor_id: str) -> None:
+    def __init__(self, hass: HomeAssistant, plan: dict, import_sensor_id: str, export_sensor_id: str) -> None:
         super().__init__(
             hass,
             _LOGGER,
             name="NZ Power Plans",
             update_interval=timedelta(seconds=SCAN_INTERVAL_SECONDS),
         )
-        self.backend_url = backend_url
-        self.plan_id = plan_id
-        self.plan_info = plan_info
+        self.plan = plan
         self.import_sensor_id = import_sensor_id
         self.export_sensor_id = export_sensor_id
 
         self.current_rate: float = 0.0
-        self.daily_charge: float = plan_info.get("daily_charge", 0)
         self.daily_import_kwh: float = 0.0
         self.daily_export_kwh: float = 0.0
         self.daily_import_cost: float = 0.0
         self.daily_export_credit: float = 0.0
-        self.retailer_name: str = (plan_info.get("retailer") or {}).get("name", "")
-        self.rate_type: str = plan_info.get("rate_type", "")
 
     async def _async_update_data(self) -> dict[str, Any]:
+        now = datetime.now()
         import_kwh = await self._read_sensor_kwh(self.import_sensor_id)
         export_kwh = await self._read_sensor_kwh(self.export_sensor_id) if self.export_sensor_id else 0.0
 
@@ -96,15 +71,10 @@ class NZPowerCoordinator(DataUpdateCoordinator):
         self.daily_import_kwh = import_kwh
         self.daily_export_kwh = export_kwh or 0.0
 
-        usage = [{"timestamp": datetime.now().isoformat(), "kwh": import_kwh}]
-        export_usage = [{"timestamp": datetime.now().isoformat(), "kwh": export_kwh or 0.0}] if export_kwh else []
-
-        cost_data = await self._calculate_cost(usage, export_usage)
-        if cost_data:
-            breakdown = cost_data.get("breakdown", {})
-            self.daily_import_cost = breakdown.get("import_cost", 0.0)
-            self.daily_export_credit = breakdown.get("export_credit", 0.0)
-            self.current_rate = breakdown.get("import_cost", 0.0) / import_kwh if import_kwh else 0.0
+        breakdown = calculate_cost(self.plan, import_kwh, export_kwh or 0.0, days=1, now=now)
+        self.daily_import_cost = breakdown["import_cost"]
+        self.daily_export_credit = breakdown["export_credit"]
+        self.current_rate = breakdown["import_cost"] / import_kwh if import_kwh else 0.0
 
         return {"import_kwh": import_kwh, "export_kwh": export_kwh}
 
@@ -117,22 +87,6 @@ class NZPowerCoordinator(DataUpdateCoordinator):
         except (ValueError, TypeError):
             return None
 
-    async def _calculate_cost(self, usage: list, export_usage: list) -> dict | None:
-        try:
-            async with httpx.AsyncClient() as client:
-                payload = {
-                    "plan_id": self.plan_id,
-                    "usage": usage,
-                    "include_export": bool(export_usage),
-                    "export_usage": export_usage,
-                }
-                r = await client.post(f"{self.backend_url}/api/cost/calculate", json=payload, timeout=10)
-                if r.status_code == 200:
-                    return r.json()
-        except Exception as e:
-            _LOGGER.warning("Cost calculation error: %s", e)
-        return None
-
 
 class NZRateSensor(SensorEntity):
     _attr_device_class = SensorDeviceClass.MONETARY
@@ -141,9 +95,9 @@ class NZRateSensor(SensorEntity):
     _attr_icon = "mdi:currency-usd"
     _attr_should_poll = False
 
-    def __init__(self, coordinator: NZPowerCoordinator) -> None:
+    def __init__(self, coordinator: NZPowerCoordinator, plan_id: int) -> None:
         self.coordinator = coordinator
-        self._attr_unique_id = f"nz_power_current_rate_{coordinator.plan_id}"
+        self._attr_unique_id = f"nz_power_current_rate_{plan_id}"
         self._attr_name = f"{SENSOR_PREFIX} Current Rate"
 
     @property
@@ -152,11 +106,12 @@ class NZRateSensor(SensorEntity):
 
     @property
     def extra_state_attributes(self) -> dict:
+        plan = self.coordinator.plan
         return {
-            "retailer": self.coordinator.retailer_name,
-            "plan": self.coordinator.plan_info.get("name", ""),
-            "rate_type": self.coordinator.rate_type,
-            "daily_charge": self.coordinator.daily_charge,
+            "retailer": plan["retailer"],
+            "plan": plan["name"],
+            "rate_type": plan["rate_type"],
+            "daily_charge": plan["daily_charge"],
         }
 
     async def async_added_to_hass(self) -> None:
@@ -170,9 +125,9 @@ class NZDailyCostSensor(SensorEntity):
     _attr_icon = "mdi:cash"
     _attr_should_poll = False
 
-    def __init__(self, coordinator: NZPowerCoordinator) -> None:
+    def __init__(self, coordinator: NZPowerCoordinator, plan_id: int) -> None:
         self.coordinator = coordinator
-        self._attr_unique_id = f"nz_power_daily_cost_{coordinator.plan_id}"
+        self._attr_unique_id = f"nz_power_daily_cost_{plan_id}"
         self._attr_name = f"{SENSOR_PREFIX} Daily Cost"
 
     @property
@@ -182,7 +137,7 @@ class NZDailyCostSensor(SensorEntity):
     @property
     def extra_state_attributes(self) -> dict:
         return {
-            "daily_charge": self.coordinator.daily_charge,
+            "daily_charge": self.coordinator.plan["daily_charge"],
             "import_cost": round(self.coordinator.daily_import_cost, 2),
             "export_credit": round(self.coordinator.daily_export_credit, 2),
         }
@@ -198,14 +153,15 @@ class NZMonthlyCostSensor(SensorEntity):
     _attr_icon = "mdi:calendar-month"
     _attr_should_poll = False
 
-    def __init__(self, coordinator: NZPowerCoordinator) -> None:
+    def __init__(self, coordinator: NZPowerCoordinator, plan_id: int) -> None:
         self.coordinator = coordinator
-        self._attr_unique_id = f"nz_power_monthly_cost_{coordinator.plan_id}"
+        self._attr_unique_id = f"nz_power_monthly_cost_{plan_id}"
         self._attr_name = f"{SENSOR_PREFIX} Monthly Cost"
 
     @property
     def native_value(self) -> float:
-        return round(self.coordinator.daily_import_cost * 30 + self.coordinator.daily_charge * 30, 2)
+        daily = self.coordinator.daily_import_cost + self.coordinator.plan["daily_charge"]
+        return round(daily * 30, 2)
 
     async def async_added_to_hass(self) -> None:
         self.async_on_remove(self.coordinator.async_add_listener(self.async_write_ha_state))
@@ -218,9 +174,9 @@ class NZDailyImportSensor(SensorEntity):
     _attr_icon = "mdi:transmission-tower-import"
     _attr_should_poll = False
 
-    def __init__(self, coordinator: NZPowerCoordinator) -> None:
+    def __init__(self, coordinator: NZPowerCoordinator, plan_id: int) -> None:
         self.coordinator = coordinator
-        self._attr_unique_id = f"nz_power_daily_import_{coordinator.plan_id}"
+        self._attr_unique_id = f"nz_power_daily_import_{plan_id}"
         self._attr_name = f"{SENSOR_PREFIX} Daily Import"
 
     @property
@@ -242,9 +198,9 @@ class NZDailyExportSensor(SensorEntity):
     _attr_icon = "mdi:transmission-tower-export"
     _attr_should_poll = False
 
-    def __init__(self, coordinator: NZPowerCoordinator) -> None:
+    def __init__(self, coordinator: NZPowerCoordinator, plan_id: int) -> None:
         self.coordinator = coordinator
-        self._attr_unique_id = f"nz_power_daily_export_{coordinator.plan_id}"
+        self._attr_unique_id = f"nz_power_daily_export_{plan_id}"
         self._attr_name = f"{SENSOR_PREFIX} Daily Export"
 
     @property
@@ -263,20 +219,22 @@ class NZPlanInfoSensor(SensorEntity):
     _attr_icon = "mdi:information"
     _attr_should_poll = False
 
-    def __init__(self, coordinator: NZPowerCoordinator) -> None:
+    def __init__(self, coordinator: NZPowerCoordinator, plan_id: int) -> None:
         self.coordinator = coordinator
-        self._attr_unique_id = f"nz_power_plan_info_{coordinator.plan_id}"
+        self._attr_unique_id = f"nz_power_plan_info_{plan_id}"
         self._attr_name = f"{SENSOR_PREFIX} Plan Info"
 
     @property
     def native_value(self) -> str:
-        return f"{self.coordinator.retailer_name} - {self.coordinator.plan_info.get('name', '')}"
+        plan = self.coordinator.plan
+        return f"{plan['retailer']} - {plan['name']}"
 
     @property
     def extra_state_attributes(self) -> dict:
-        info = dict(self.coordinator.plan_info) if self.coordinator.plan_info else {}
-        info.pop("retailer", None)
-        return info
+        plan = dict(self.coordinator.plan)
+        plan.pop("tou_rates", None)
+        plan.pop("tou_export_rates", None)
+        return plan
 
     async def async_added_to_hass(self) -> None:
         self.async_on_remove(self.coordinator.async_add_listener(self.async_write_ha_state))

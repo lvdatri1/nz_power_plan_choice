@@ -1,18 +1,6 @@
-calculate_cost:
-  name: Calculate Cost
-  description: Calculate electricity cost for given usage against a plan
-  fields:
-    plan_id:
-      name: Plan ID
-      description: The plan ID from the backend
-      required: true
-      selector:
-        number:
-          min: 1
-          max: 999
-    usage_kwh:
-      name: Usage kWh
-      description: List of timestamp and kWh usage records
-      required: true
-      selector:
-        object: {}
+recalculate:
+  name: Recalculate
+  description: Trigger cost recalculation immediately
+reload_plans:
+  name: Reload Plans
+  description: Reload plan data (not yet implemented)

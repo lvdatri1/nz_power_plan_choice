@@ -1,20 +1,29 @@
 # NZ Power Plans
 
-Compare your home energy usage against real New Zealand electricity retailer plans. Analyzes import/export costs with time-of-use (TOU), flat, and tiered rate structures.
+Compare your home energy usage against real New Zealand electricity retailer plans — directly in Home Assistant. No external servers needed.
 
 ## Architecture
 
 ```
-┌─────────────────────┐     ┌──────────────────┐     ┌─────────────────────┐
-│  Home Assistant     │────▶│  Backend API     │────▶│  SQLite DB          │
-│  (HACS integration) │     │  (FastAPI/Python)│     │  (retailers + plans)│
-│  ─ 6 sensors        │     │  :8080           │     │                     │
-│  ─ cost analysis    │     │  /api/cost/calc  │     │  14 retailers       │
-│  ─ TOU support      │     │  /api/plans      │     │  26 plans           │
-└─────────────────────┘     └──────────────────┘     └─────────────────────┘
+┌────────────────────────────────────────┐
+│  Home Assistant (HACS Integration)     │
+│                                        │
+│  ┌──────────────┐  ┌────────────────┐  │
+│  │ sensor.py    │  │ cost_engine.py  │  │
+│  │ 6 sensors    │◀─│ FLAT / TOU calc │  │
+│  └──────────────┘  └──────┬─────────┘  │
+│                           │             │
+│  ┌────────────────────────┘             │
+│  │                                      │
+│  ┌▼─────────────────────────────────┐   │
+│  │ data.py (26 NZ plans embedded)   │   │
+│  └──────────────────────────────────┘   │
+└────────────────────────────────────────┘
 ```
 
-## Backend Setup
+## Backend (Optional)
+
+For advanced usage, there's also a FastAPI backend in the `backend/` directory that provides the same calculations via REST API. You don't need it for the HA integration — all logic runs inside Home Assistant.
 
 ### Quick Start
 
@@ -31,36 +40,6 @@ docker compose up -d
 ```
 
 The backend auto-seeds 14 NZ retailers and 26 electricity plans on first run.
-
-### API Endpoints
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/health` | Health check |
-| GET | `/api/retailers` | List all retailers |
-| GET | `/api/retailers/{id}` | Get retailer details |
-| GET | `/api/plans` | List plans (filter: `retailer_id`, `rate_type`, `solar`, `active`) |
-| GET | `/api/plans/{id}` | Get plan details with rates |
-| POST | `/api/plans` | Create a new plan |
-| POST | `/api/cost/calculate` | Calculate cost for usage against a plan |
-
-### Cost Calculation Example
-
-```bash
-curl -X POST http://localhost:8080/api/cost/calculate \
-  -H "Content-Type: application/json" \
-  -d '{
-    "plan_id": 7,
-    "usage": [
-      {"timestamp": "2026-07-22T08:00:00", "kwh": 1.5},
-      {"timestamp": "2026-07-22T21:30:00", "kwh": 2.0}
-    ],
-    "include_export": true,
-    "export_usage": [
-      {"timestamp": "2026-07-22T10:00:00", "kwh": 2.5}
-    ]
-  }'
-```
 
 ## Home Assistant Integration
 
@@ -85,11 +64,11 @@ Restart Home Assistant.
 
 1. Go to **Settings → Devices & Services → Add Integration**
 2. Search for **NZ Power Plans**
-3. Enter your backend URL (e.g., `http://192.168.1.100:8080`)
-4. Enter the plan ID (default: 1)
+3. Select your **retailer** from the dropdown
+4. Select your **plan** from the dropdown
 5. Map your HA energy sensors:
-   - Import sensor (e.g., `sensor.energy_import`)
-   - Export sensor (e.g., `sensor.energy_export`)
+   - Import sensor (e.g., `sensor.energy_import_hourly`)
+   - Export sensor (e.g., `sensor.energy_export_hourly`)
 
 ### Sensors Created
 

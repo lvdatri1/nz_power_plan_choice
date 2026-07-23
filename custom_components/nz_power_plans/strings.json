@@ -1,0 +1,28 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Choose Retailer",
+        "description": "Select your electricity retailer",
+        "data": {
+          "retailer": "Retailer"
+        }
+      },
+      "plan": {
+        "title": "Choose Plan",
+        "description": "Select your electricity plan",
+        "data": {
+          "plan_id": "Plan"
+        }
+      },
+      "sensors": {
+        "title": "Energy Sensors",
+        "description": "Map your Home Assistant energy sensors. Typically these are created by the Energy Dashboard integration.",
+        "data": {
+          "import_sensor": "Import (grid consumption) sensor",
+          "export_sensor": "Export (solar export) sensor"
+        }
+      }
+    }
+  }
+}
