@@ -1,3 +1,4 @@
+import logging
 import httpx
 import re
 
@@ -5,6 +6,8 @@ from sqlalchemy.orm import Session
 
 from app.db import SessionLocal
 from app.models import Retailer, Plan, PlanRateFlat, RateType
+
+logger = logging.getLogger("nz_power_plans.scraper")
 
 BILLY_API_BASE = "https://billy.govt.nz/api"
 
@@ -16,12 +19,16 @@ async def fetch_retailers() -> list[dict]:
         while True:
             r = await client.get(f"{BILLY_API_BASE}/retailers?page={page}&limit=50", timeout=15)
             if r.status_code != 200:
+                logger.warning("billy.govt.nz returned %d at page %d", r.status_code, page)
                 break
             data = r.json()
-            retailers.extend(data.get("docs", []))
+            docs = data.get("docs", [])
+            retailers.extend(docs)
+            logger.info("Fetched page %d: %d retailers", page, len(docs))
             if not data.get("hasNextPage"):
                 break
             page += 1
+    logger.info("Total retailers fetched: %d", len(retailers))
     return retailers
 
 
@@ -201,17 +208,17 @@ async def sync_from_billy(db: Session) -> int:
     return plans_updated
 
 
-async def refresh_plans(db: Session = None) -> bool:
+async def refresh_plans(db: Session = None) -> int:
     close = db is None
     if db is None:
         db = SessionLocal()
     try:
         count = await sync_from_billy(db)
-        print(f"Billy sync: {count} plans added/updated")
-        return True
+        logger.info("Billy sync complete: %d plans added/updated", count)
+        return count
     except Exception as e:
-        print(f"Billy sync skipped (using seed data): {e}")
-        return False
+        logger.warning("Billy sync failed, using seed data: %s", e)
+        return 0
     finally:
         if close:
             db.close()

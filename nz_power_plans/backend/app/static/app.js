@@ -3,13 +3,23 @@ const API = '';
 let allPlans = [];
 let allRetailers = [];
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
   initNav();
+  await loadData();
   initDashboard();
   initPlans();
   initCalculator();
   initCompare();
 });
+
+async function loadData() {
+  const [retailers, plans] = await Promise.all([
+    api('/api/retailers').catch(() => []),
+    api('/api/plans').catch(() => []),
+  ]);
+  allRetailers = retailers;
+  allPlans = plans;
+}
 
 /* === Navigation === */
 function initNav() {
@@ -57,13 +67,7 @@ async function apiPost(path, body) {
 
 /* === Dashboard === */
 async function initDashboard() {
-  const [retailers, plans, haStatus] = await Promise.all([
-    api('/api/retailers').catch(() => []),
-    api('/api/plans').catch(() => []),
-    apiWithTimeout('/api/ha/status', 5000).catch(() => null),
-  ]);
-  allRetailers = retailers;
-  allPlans = plans;
+  const haStatus = await apiWithTimeout('/api/ha/status', 5000).catch(() => null);
 
   const haEl = document.getElementById('ha-info');
   const compareSection = document.getElementById('ha-compare-section');

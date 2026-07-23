@@ -1,4 +1,5 @@
 import os
+import logging
 import asyncio
 from contextlib import asynccontextmanager
 import httpx
@@ -17,20 +18,31 @@ from app.cost_engine import calculate_cost
 from app import seed_data
 from app import billy_scraper
 
+logger = logging.getLogger("nz_power_plans")
+logger.setLevel(logging.INFO)
+handler = logging.StreamHandler()
+handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
+logger.addHandler(handler)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    logger.info("Initializing database...")
     init_db()
     seed_data.seed_if_empty()
+    logger.info("Database ready")
 
     async def background_refresh():
+        logger.info("Starting billy.govt.nz scraper in background...")
         try:
-            await billy_scraper.refresh_plans()
-        except Exception:
-            pass
+            count = await billy_scraper.refresh_plans()
+            logger.info("Scraper finished: %d plans updated", count)
+        except Exception as e:
+            logger.error("Scraper failed: %s", e)
 
     asyncio.create_task(background_refresh())
     yield
+    logger.info("Shutting down")
 
 
 app = FastAPI(title=settings.api_title, version=settings.api_version, lifespan=lifespan)
@@ -51,13 +63,16 @@ def health():
 
 @app.get("/api/retailers", response_model=list[RetailerResponse])
 def list_retailers(db: Session = Depends(get_db)):
-    return db.query(Retailer).all()
+    retailers = db.query(Retailer).all()
+    logger.info("GET /api/retailers -> %d retailers", len(retailers))
+    return retailers
 
 
 @app.get("/api/retailers/{retailer_id}", response_model=RetailerResponse)
 def get_retailer(retailer_id: int, db: Session = Depends(get_db)):
     retailer = db.query(Retailer).filter(Retailer.id == retailer_id).first()
     if not retailer:
+        logger.warning("GET /api/retailers/%d -> 404", retailer_id)
         raise HTTPException(status_code=404, detail="Retailer not found")
     return retailer
 
@@ -133,8 +148,10 @@ def create_plan(data: PlanCreate, db: Session = Depends(get_db)):
 def calculate_plan_cost(req: CostRequest, db: Session = Depends(get_db)):
     plan = db.query(Plan).filter(Plan.id == req.plan_id).first()
     if not plan:
+        logger.warning("POST /api/cost/calculate plan_id=%d -> 404", req.plan_id)
         raise HTTPException(status_code=404, detail="Plan not found")
     breakdown = calculate_cost(plan, req)
+    logger.info("POST /api/cost/calculate plan_id=%d net=%.2f", req.plan_id, breakdown.net_cost)
     return CostResponse(
         plan_id=plan.id,
         plan_name=plan.name,
@@ -147,6 +164,7 @@ def calculate_plan_cost(req: CostRequest, db: Session = Depends(get_db)):
 @app.get("/api/ha/status")
 async def ha_status():
     if not settings.ha_url or not settings.ha_token:
+        logger.info("GET /api/ha/status -> not configured")
         return {"connected": False, "message": "HA not configured (not running as add-on)"}
     try:
         async with httpx.AsyncClient() as client:
@@ -155,18 +173,23 @@ async def ha_status():
                 headers={"Authorization": f"Bearer {settings.ha_token}"},
                 timeout=10,
             )
+            logger.info("GET /api/ha/status -> %s (sensor=%s)", r.status_code, settings.nz_import_sensor)
             return {"connected": r.status_code == 200, "sensor": settings.nz_import_sensor, "status": r.status_code}
     except Exception as e:
+        logger.warning("GET /api/ha/status error: %s", e)
         return {"connected": False, "error": str(e)}
 
 
 @app.get("/api/ha/cost")
 async def ha_cost(db: Session = Depends(get_db)):
     if not settings.ha_url or not settings.ha_token:
+        logger.warning("GET /api/ha/cost -> HA not configured")
         raise HTTPException(status_code=400, detail="HA not configured")
     plan = db.query(Plan).filter(Plan.id == settings.nz_plan_id).first()
     if not plan:
+        logger.warning("GET /api/ha/cost plan_id=%d -> 404", settings.nz_plan_id)
         raise HTTPException(status_code=404, detail=f"Plan {settings.nz_plan_id} not found")
+    logger.info("GET /api/ha/cost plan_id=%d", settings.nz_plan_id)
 
     async with httpx.AsyncClient() as client:
         headers = {"Authorization": f"Bearer {settings.ha_token}"}
@@ -215,6 +238,7 @@ async def ha_cost(db: Session = Depends(get_db)):
 @app.get("/api/ha/compare")
 async def ha_compare(days: int = 30, db: Session = Depends(get_db)):
     if not settings.ha_url or not settings.ha_token:
+        logger.warning("GET /api/ha/compare -> HA not configured")
         raise HTTPException(status_code=400, detail="HA not configured")
 
     async with httpx.AsyncClient() as client:
@@ -279,6 +303,10 @@ async def ha_compare(days: int = 30, db: Session = Depends(get_db)):
             pass
 
     results.sort(key=lambda r: r["net_cost"])
+    logger.info(
+        "GET /api/ha/compare days=%d import=%.2f export=%.2f plans=%d",
+        days, import_kwh, export_kwh, len(results),
+    )
     return {
         "import_sensor": settings.nz_import_sensor,
         "export_sensor": settings.nz_export_sensor or "",
