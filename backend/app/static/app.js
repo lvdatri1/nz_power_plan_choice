@@ -54,13 +54,19 @@ async function initDashboard() {
   allPlans = plans;
 
   const haEl = document.getElementById('ha-info');
+  const compareSection = document.getElementById('ha-compare-section');
   if (haStatus && haStatus.connected) {
     haEl.innerHTML = `<span class="connected">Connected</span> — sensor: ${haStatus.sensor}`;
+    compareSection.style.display = 'block';
   } else if (haStatus && !haStatus.connected) {
     haEl.innerHTML = '<span class="disconnected">Not connected</span> (add-on or sensor not configured)';
+    compareSection.style.display = 'none';
   } else {
     haEl.innerHTML = '<span class="disconnected">Not available</span> (not running as HA add-on)';
+    compareSection.style.display = 'none';
   }
+
+  document.getElementById('ha-compare-btn').addEventListener('click', doHaCompare);
 
   populateSelect('dash-plan', plans);
   document.getElementById('dash-calc').addEventListener('click', doDashCalc);
@@ -84,6 +90,50 @@ async function doDashCalc() {
     document.getElementById('dash-result').innerHTML = renderBreakdown(result);
   } catch (err) {
     document.getElementById('dash-result').innerHTML = `<p style="color:#dc2626">Error: ${err.message}</p>`;
+  }
+}
+
+async function doHaCompare() {
+  const days = parseInt(document.getElementById('ha-compare-days').value) || 30;
+  const resultEl = document.getElementById('ha-compare-result');
+  resultEl.innerHTML = '<p>Comparing all plans…</p>';
+
+  try {
+    const data = await api(`/api/ha/compare?days=${days}`);
+    if (!data.results || data.results.length === 0) {
+      resultEl.innerHTML = '<p style="color:var(--warning)">No plans to compare. Check sensor values.</p>';
+      return;
+    }
+    const rows = data.results.map((r, i) => {
+      const isCheapest = i === 0;
+      return `<tr class="${isCheapest ? 'total' : ''}">
+        <td>${isCheapest ? '★ ' : ''}${r.retailer_name}</td>
+        <td>${r.plan_name}</td>
+        <td>${r.rate_type}</td>
+        <td>${r.has_export ? '✓' : '—'}</td>
+        <td>$${r.import_cost.toFixed(2)}</td>
+        <td>${r.export_credit > 0 ? '-$' + r.export_credit.toFixed(2) : '—'}</td>
+        <td>$${r.daily_charges.toFixed(2)}</td>
+        <td><strong>$${r.net_cost.toFixed(2)}</strong></td>
+        <td><strong>$${r.monthly_cost.toFixed(2)}</strong></td>
+      </tr>`;
+    }).join('');
+    resultEl.innerHTML = `
+      <p style="margin-bottom:8px;font-size:.9rem;color:var(--text-secondary)">
+        ${data.import_kwh.toFixed(2)} kWh import, ${data.export_kwh.toFixed(2)} kWh export over ${days} days
+        — <strong>${data.plans_compared}</strong> plans compared
+      </p>
+      <div style="overflow-x:auto">
+      <table class="breakdown-table">
+        <tr>
+          <th>Retailer</th><th>Plan</th><th>Type</th><th>Solar</th>
+          <th>Import</th><th>Export</th><th>Daily</th><th>Total</th><th>/month</th>
+        </tr>
+        ${rows}
+      </table>
+      </div>`;
+  } catch (err) {
+    resultEl.innerHTML = `<p style="color:#dc2626">Error: ${err.message}</p>`;
   }
 }
 

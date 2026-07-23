@@ -65,10 +65,13 @@ def calculate_cost(plan: Plan, req: CostRequest) -> CostBreakdown:
         avg_rate = total_import_cost / total_kwh if total_kwh else 0
         items.append(CostItem(label=label, kwh=total_kwh, rate=round(avg_rate, 6), cost=total_import_cost))
 
-    timestamps = [datetime.fromisoformat(r.timestamp) for r in req.usage]
-    if timestamps:
-        date_range = set(ts.date() for ts in timestamps)
-        total_days = len(date_range)
+    if req.days > 0:
+        total_days = req.days
+    else:
+        timestamps = [datetime.fromisoformat(r.timestamp) for r in req.usage]
+        if timestamps:
+            date_range = set(ts.date() for ts in timestamps)
+            total_days = len(date_range)
 
     daily_charges = total_days * plan.daily_charge
 

@@ -1,4 +1,6 @@
 import os
+import asyncio
+from contextlib import asynccontextmanager
 import httpx
 from datetime import datetime
 from fastapi import FastAPI, Depends, HTTPException
@@ -13,8 +15,21 @@ from app.models import Retailer, Plan, RateType, PlanRateFlat, PlanRateTier, Pla
 from app.schemas import RetailerCreate, RetailerResponse, PlanCreate, PlanResponse, CostRequest, CostResponse
 from app.cost_engine import calculate_cost
 from app import seed_data
+from app import billy_scraper
 
-app = FastAPI(title=settings.api_title, version=settings.api_version)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    init_db()
+    seed_data.seed_if_empty()
+    try:
+        await billy_scraper.refresh_plans()
+    except Exception:
+        pass
+    yield
+
+
+app = FastAPI(title=settings.api_title, version=settings.api_version, lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -23,12 +38,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
-@app.on_event("startup")
-def on_startup():
-    init_db()
-    seed_data.seed_if_empty()
 
 
 @app.get("/health")
@@ -196,6 +205,85 @@ async def ha_cost(db: Session = Depends(get_db)):
         "import_kwh": import_kwh,
         "export_kwh": export_kwh,
         "breakdown": breakdown.model_dump() if hasattr(breakdown, "model_dump") else breakdown,
+    }
+
+
+@app.get("/api/ha/compare")
+async def ha_compare(days: int = 30, db: Session = Depends(get_db)):
+    if not settings.ha_url or not settings.ha_token:
+        raise HTTPException(status_code=400, detail="HA not configured")
+
+    async with httpx.AsyncClient() as client:
+        headers = {"Authorization": f"Bearer {settings.ha_token}"}
+        import_state = await client.get(
+            f"{settings.ha_url}/api/states/{settings.nz_import_sensor}",
+            headers=headers, timeout=10,
+        )
+        import_kwh = 0.0
+        if import_state.status_code == 200:
+            try:
+                import_kwh = float(import_state.json()["state"])
+            except (ValueError, KeyError):
+                pass
+
+        export_kwh = 0.0
+        if settings.nz_export_sensor:
+            export_state = await client.get(
+                f"{settings.ha_url}/api/states/{settings.nz_export_sensor}",
+                headers=headers, timeout=10,
+            )
+            if export_state.status_code == 200:
+                try:
+                    export_kwh = float(export_state.json()["state"])
+                except (ValueError, KeyError):
+                    pass
+
+    if import_kwh <= 0:
+        raise HTTPException(status_code=400, detail="Import sensor value is 0 or unavailable")
+
+    plans = db.query(Plan).filter(Plan.active == True).all()
+    results = []
+
+    for plan in plans:
+        req = CostRequest(
+            plan_id=plan.id,
+            usage=[{"timestamp": datetime.utcnow().isoformat(), "kwh": import_kwh}],
+            days=days,
+            include_export=bool(export_kwh) and plan.has_export,
+            export_usage=[{"timestamp": datetime.utcnow().isoformat(), "kwh": export_kwh}] if export_kwh and plan.has_export else [],
+        )
+        try:
+            breakdown = calculate_cost(plan, req)
+            results.append({
+                "plan_id": plan.id,
+                "plan_name": plan.name,
+                "retailer_name": plan.retailer.name,
+                "rate_type": plan.rate_type.value,
+                "daily_charge": plan.daily_charge,
+                "has_export": plan.has_export,
+                "export_rate": plan.export_rate,
+                "import_kwh": import_kwh,
+                "export_kwh": export_kwh,
+                "days": days,
+                "import_cost": round(breakdown.import_cost, 4),
+                "export_credit": round(breakdown.export_credit, 4),
+                "daily_charges": round(breakdown.daily_charges, 4),
+                "net_cost": round(breakdown.net_cost, 4),
+                "monthly_cost": round(breakdown.net_cost / days * 30, 2) if days > 0 else 0,
+            })
+        except Exception:
+            pass
+
+    results.sort(key=lambda r: r["net_cost"])
+    return {
+        "import_sensor": settings.nz_import_sensor,
+        "export_sensor": settings.nz_export_sensor or "",
+        "import_kwh": import_kwh,
+        "export_kwh": export_kwh,
+        "days": days,
+        "plans_compared": len(results),
+        "cheapest": results[0] if results else None,
+        "results": results,
     }
 
 

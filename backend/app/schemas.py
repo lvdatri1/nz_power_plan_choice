@@ -95,6 +95,7 @@ class UsageRecord(BaseModel):
 class CostRequest(BaseModel):
     plan_id: int
     usage: list[UsageRecord]
+    days: int = 0
     include_export: bool = False
     export_usage: list[UsageRecord] = []
 

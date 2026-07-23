@@ -45,6 +45,14 @@
         <div class="card" id="ha-card">
           <h3>Home Assistant</h3>
           <div id="ha-info">Connecting…</div>
+          <div id="ha-compare-section" style="display:none;margin-top:12px">
+            <div class="form-row">
+              <label>Comparison period (days)</label>
+              <input type="number" id="ha-compare-days" value="30" min="1">
+            </div>
+            <button id="ha-compare-btn">Compare All Plans</button>
+            <div id="ha-compare-result" style="margin-top:12px"></div>
+          </div>
         </div>
       </div>
     </section>
