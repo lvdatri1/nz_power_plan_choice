@@ -16,7 +16,7 @@ if [ -f "${CONFIG_PATH}" ]; then
     [ -n "${EXPORT_SENSOR}" ] && export NZ_EXPORT_SENSOR="${EXPORT_SENSOR}"
 
     if [ -n "${SUPERVISOR_TOKEN}" ]; then
-        export HA_URL="${SUPERVISOR_URL}"
+        export HA_URL="http://supervisor/core"
         export HA_TOKEN="${SUPERVISOR_TOKEN}"
     fi
 fi
