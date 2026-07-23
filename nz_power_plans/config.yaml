@@ -29,20 +29,6 @@ options:
   import_sensor: sensor.energy_import_hourly
   export_sensor: sensor.energy_export_hourly
 schema:
-  plan_id:
-    name: "Default Plan ID"
-    description: "Which plan to use for calculations (1-26)"
-    required: true
-    default: 1
-    type: int
-  import_sensor:
-    name: "Import Sensor"
-    description: "HA sensor for grid consumption (kWh)"
-    required: true
-    default: sensor.energy_import_hourly
-    type: string
-  export_sensor:
-    name: "Export Sensor"
-    description: "HA sensor for solar export (kWh), leave empty if none"
-    required: false
-    type: string
+  plan_id: int(1)
+  import_sensor: str
+  export_sensor: str?
