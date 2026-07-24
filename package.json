@@ -1,0 +1,18 @@
+{
+  "name": "nz-power-plans-unified",
+  "version": "1.0.0",
+  "description": "Unified NZ Power Plans - Backend API + Web UI in one package",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server/index.js"
+  },
+  "keywords": ["nz-power-plans", "api", "web-ui"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.21.1",
+    "cors": "^2.8.5",
+    "helmet": "^7.0.0",
+    "express-rate-limit": "^6.7.0"
+  }
+}

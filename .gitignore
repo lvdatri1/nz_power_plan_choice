@@ -9,3 +9,4 @@ dist/
 .pytest_cache/
 .DS_Store
 data/
+node_modules
